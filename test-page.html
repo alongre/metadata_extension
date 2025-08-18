@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Metadata Wizard Test Page</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				max-width: 800px;
+				margin: 0 auto;
+				padding: 20px;
+				background: #f5f5f5;
+			}
+			.container {
+				background: white;
+				padding: 30px;
+				border-radius: 10px;
+				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+			}
+			button {
+				background: #4f46e5;
+				color: white;
+				border: none;
+				padding: 12px 24px;
+				border-radius: 6px;
+				cursor: pointer;
+				margin: 10px;
+				font-size: 14px;
+			}
+			button:hover {
+				background: #3730a3;
+			}
+			.log {
+				background: #f8f9fa;
+				border: 1px solid #dee2e6;
+				border-radius: 4px;
+				padding: 15px;
+				margin: 15px 0;
+				font-family: monospace;
+				white-space: pre-wrap;
+				max-height: 400px;
+				overflow-y: auto;
+			}
+			.success {
+				color: #10b981;
+			}
+			.error {
+				color: #ef4444;
+			}
+			.info {
+				color: #3b82f6;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<h1>🧙‍♂️ Metadata Wizard Test Page</h1>
+
+			<p>
+				This page helps you test the Metadata Wizard Chrome extension. Use the buttons below to simulate API requests
+				that the extension should intercept.
+			</p>
+
+			<h3>📡 Test Buttons</h3>
+			<button onclick="testFetch()">Test Fetch Request</button>
+			<button onclick="testXHR()">Test XMLHttpRequest</button>
+			<button onclick="testMultiple()">Test Multiple Requests</button>
+			<button onclick="clearLog()">Clear Log</button>
+
+			<h3>📋 Request Log</h3>
+			<div id="log" class="log">Ready to test...\n</div>
+
+			<h3>📝 Instructions</h3>
+			<ol>
+				<li><strong>Install the extension</strong> first (see README.md)</li>
+				<li><strong>Open browser DevTools</strong> (F12) and check the Console tab</li>
+				<li><strong>Click the test buttons</strong> above to simulate API requests</li>
+				<li><strong>Check the extension popup</strong> - requests should appear in the sidebar</li>
+				<li><strong>Check DevTools console</strong> for extension logs</li>
+			</ol>
+
+			<h3>🔍 What to Look For</h3>
+			<ul>
+				<li><span class="success">✅ Green messages</span> - Extension working correctly</li>
+				<li><span class="error">❌ Red messages</span> - Errors or issues</li>
+				<li><span class="info">🔍 Blue messages</span> - Debug information</li>
+			</ul>
+
+			<h3>🐛 Debugging</h3>
+			<p>If requests aren't being captured:</p>
+			<ul>
+				<li>Check that the extension is loaded and enabled</li>
+				<li>Open the background script console from chrome://extensions/</li>
+				<li>Look for content script messages in this page's console</li>
+				<li>Click the debug button (🐛) in the extension popup</li>
+			</ul>
+		</div>
+
+		<script>
+			function log(message, type = 'info') {
+				const logElement = document.getElementById('log');
+				const timestamp = new Date().toLocaleTimeString();
+				const prefix = type === 'success' ? '✅' : type === 'error' ? '❌' : '🔍';
+				logElement.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+				logElement.scrollTop = logElement.scrollHeight;
+			}
+
+			function clearLog() {
+				document.getElementById('log').textContent = 'Log cleared...\n';
+			}
+
+			async function testFetch() {
+				log('Testing fetch() request to /rest/reports-metadata/dashboard');
+
+				try {
+					const response = await fetch('/rest/reports-metadata/dashboard', {
+						method: 'GET',
+						headers: {
+							'Content-Type': 'application/json',
+							'X-Test-Header': 'MetadataWizardTest',
+						},
+					});
+
+					log(`Fetch response status: ${response.status}`, 'info');
+
+					// This will likely fail (404) but that's OK - we just want to test interception
+					if (response.ok) {
+						const data = await response.json();
+						log('Fetch response data received', 'success');
+					} else {
+						log(`Fetch failed with status ${response.status} (expected for test)`, 'info');
+					}
+				} catch (error) {
+					log(`Fetch error: ${error.message} (expected for test)`, 'info');
+				}
+			}
+
+			function testXHR() {
+				log('Testing XMLHttpRequest to /rest/reports-metadata/users');
+
+				const xhr = new XMLHttpRequest();
+				xhr.open('POST', '/rest/reports-metadata/users', true);
+				xhr.setRequestHeader('Content-Type', 'application/json');
+				xhr.setRequestHeader('X-Test-Header', 'MetadataWizardXHR');
+
+				xhr.onload = function () {
+					log(`XHR response status: ${xhr.status}`, 'info');
+					if (xhr.status >= 200 && xhr.status < 300) {
+						log('XHR response received', 'success');
+					} else {
+						log(`XHR failed with status ${xhr.status} (expected for test)`, 'info');
+					}
+				};
+
+				xhr.onerror = function () {
+					log('XHR error (expected for test)', 'info');
+				};
+
+				xhr.send(
+					JSON.stringify({
+						test: 'data',
+						timestamp: Date.now(),
+						source: 'MetadataWizardTest',
+					})
+				);
+			}
+
+			async function testMultiple() {
+				log('Testing multiple requests...');
+
+				const endpoints = [
+					'/rest/reports-metadata/analytics',
+					'/rest/reports-metadata/configuration',
+					'/rest/reports-metadata/export',
+				];
+
+				for (let i = 0; i < endpoints.length; i++) {
+					const endpoint = endpoints[i];
+					log(`Request ${i + 1}/3: ${endpoint}`);
+
+					try {
+						fetch(endpoint, {
+							method: 'GET',
+							headers: { 'X-Test-Batch': `request-${i + 1}` },
+						}).catch(() => {
+							// Ignore errors - we just want to test interception
+						});
+
+						// Small delay between requests
+						await new Promise((resolve) => setTimeout(resolve, 500));
+					} catch (error) {
+						log(`Batch request ${i + 1} error: ${error.message}`, 'info');
+					}
+				}
+
+				log('Multiple requests test completed', 'success');
+			}
+
+			// Log when page loads
+			window.addEventListener('load', () => {
+				log('Test page loaded. Extension should intercept /rest/reports-metadata requests.', 'success');
+				log('Open extension popup to see captured requests.', 'info');
+			});
+
+			// Test content script presence
+			setTimeout(() => {
+				const fetchOverridden = window.fetch.toString().includes('Metadata Wizard');
+				const xhrOverridden = window.XMLHttpRequest.toString().includes('XMLHttpRequest');
+
+				if (fetchOverridden || xhrOverridden) {
+					log('✅ Content script detected - request interception active!', 'success');
+				} else {
+					log('❌ Content script not detected - extension may not be loaded', 'error');
+				}
+			}, 1000);
+		</script>
+	</body>
+</html>

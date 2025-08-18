@@ -1,0 +1,36 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Wizard Hat -->
+  <path d="M64 8L84 72H44L64 8Z" fill="#4F46E5" stroke="#3730A3" stroke-width="2"/>
+  
+  <!-- Hat Band -->
+  <ellipse cx="64" cy="72" rx="20" ry="4" fill="#1F2937"/>
+  
+  <!-- Stars on Hat -->
+  <path d="M58 32L60 38L66 36L62 42L68 44L60 46L62 52L58 46L52 48L58 42L52 40L58 38L56 32L58 32Z" fill="#FDE047"/>
+  <path d="M70 24L71 28L75 27L72 31L76 32L71 33L72 37L70 33L66 34L70 31L66 30L70 28L69 24L70 24Z" fill="#FDE047"/>
+  
+  <!-- Wizard Robe/Body -->
+  <path d="M44 72L44 108C44 114 48 118 54 118H74C80 118 84 114 84 108V72H44Z" fill="#6B7280" stroke="#4B5563" stroke-width="2"/>
+  
+  <!-- Belt -->
+  <rect x="44" y="84" width="40" height="8" fill="#92400E"/>
+  <rect x="60" y="82" width="8" height="12" fill="#F59E0B"/>
+  
+  <!-- Arms -->
+  <ellipse cx="38" cy="88" rx="6" ry="12" fill="#6B7280" stroke="#4B5563" stroke-width="1"/>
+  <ellipse cx="90" cy="88" rx="6" ry="12" fill="#6B7280" stroke="#4B5563" stroke-width="1"/>
+  
+  <!-- Magic Wand -->
+  <line x1="96" y1="82" x2="110" y2="68" stroke="#8B4513" stroke-width="3"/>
+  <circle cx="110" cy="68" r="4" fill="#FDE047" stroke="#F59E0B" stroke-width="1"/>
+  
+  <!-- Magic Sparkles -->
+  <path d="M108 58L109 61L112 60L110 63L113 64L109 65L110 68L108 65L105 66L108 63L105 62L108 61L107 58L108 58Z" fill="#FDE047"/>
+  <path d="M118 72L119 74L121 73L120 75L122 76L119 77L120 79L118 77L116 78L118 75L116 74L118 74L117 72L118 72Z" fill="#FDE047"/>
+  
+  <!-- Metadata Symbol -->
+  <rect x="52" y="96" width="24" height="16" fill="#1F2937" stroke="#374151" stroke-width="1" rx="2"/>
+  <line x1="56" y1="100" x2="72" y2="100" stroke="#3B82F6" stroke-width="2"/>
+  <line x1="56" y1="104" x2="68" y2="104" stroke="#10B981" stroke-width="2"/>
+  <line x1="56" y1="108" x2="70" y2="108" stroke="#F59E0B" stroke-width="2"/>
+</svg>

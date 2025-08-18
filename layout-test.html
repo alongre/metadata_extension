@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Layout Test - Metadata Wizard</title>
+		<style>
+			body {
+			    font-family: Arial, sans-serif;
+			    padding: 20px;
+			    background: #f5f5f5;
+			}
+			.test-container {
+			    width: 800px;
+			    height: 600px;
+			    border: 2px solid #333;
+			    margin: 20px auto;
+			    display: flex;
+			    flex-row;
+			    background: white;
+			}
+			.sidebar {
+			    width: 200px;
+			    height: 100%;
+			    background: #f9f9f9;
+			    border-right: 1px solid #ccc;
+			    padding: 10px;
+			    box-sizing: border-box;
+			}
+			.resizer {
+			    width: 4px;
+			    height: 100%;
+			    background: #ccc;
+			    cursor: col-resize;
+			}
+			.resizer:hover {
+			    background: #4285f4;
+			}
+			.json-editor {
+			    flex: 1;
+			    height: 100%;
+			    padding: 10px;
+			    box-sizing: border-box;
+			    background: white;
+			}
+			.instruction {
+			    background: #e3f2fd;
+			    padding: 15px;
+			    border-radius: 5px;
+			    margin-bottom: 20px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="instruction">
+			<h2>🎯 Layout Test for Metadata Wizard</h2>
+			<p>This shows how your extension layout SHOULD look:</p>
+			<ul>
+				<li><strong>Left:</strong> Sidebar (200px)</li>
+				<li><strong>Middle:</strong> Resizer (4px gray bar)</li>
+				<li><strong>Right:</strong> JSON Editor (remaining space)</li>
+			</ul>
+		</div>
+
+		<div class="test-container">
+			<div class="sidebar">
+				<h3>📋 Sidebar</h3>
+				<p>Captured Requests</p>
+				<div style="background: #fff; padding: 8px; margin: 5px 0; border-radius: 3px; border: 1px solid #ddd">
+					Request 1
+				</div>
+				<div style="background: #fff; padding: 8px; margin: 5px 0; border-radius: 3px; border: 1px solid #ddd">
+					Request 2
+				</div>
+				<button style="margin-top: 10px">🐛 Debug</button>
+				<button style="margin-left: 5px">🔄 Refresh</button>
+			</div>
+
+			<div class="resizer"></div>
+
+			<div class="json-editor">
+				<h3>📝 JSON Editor</h3>
+				<p>No Request Selected</p>
+				<p style="color: #666">Select a request from the sidebar to view and edit its response data</p>
+
+				<div style="background: #f5f5f5; padding: 10px; border-radius: 5px; margin-top: 20px">
+					<h4>Expected JSON content area:</h4>
+					<textarea
+						style="width: 100%; height: 200px; font-family: monospace"
+						placeholder="JSON data will appear here..."
+					></textarea>
+				</div>
+			</div>
+		</div>
+
+		<div class="instruction">
+			<h3>🔧 If your extension doesn't match this layout:</h3>
+			<ol>
+				<li>Go to <code>chrome://extensions/</code></li>
+				<li>Find "Metadata Wizard"</li>
+				<li>Click the <strong>🔄 reload button</strong></li>
+				<li>Open the extension popup again</li>
+			</ol>
+		</div>
+	</body>
+</html>
