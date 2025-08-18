@@ -45,7 +45,7 @@
 	],
 	"web_accessible_resources": [
 		{
-			"resources": ["*.js", "*.css", "*.html"],
+			"resources": ["*.js", "*.css", "*.html", "pageInterceptor.js"],
 			"matches": ["<all_urls>"]
 		}
 	]

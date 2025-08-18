@@ -214,7 +214,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 													Modified
 												</span>
 											)}
-											{request.responseData && (
+											{request.responseData !== undefined && (
 												<span
 													style={{
 														backgroundColor: '#dcfce7',
@@ -227,7 +227,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 													✓ Response
 												</span>
 											)}
-											{!request.responseData && request.completed && (
+											{request.responseData === undefined && request.completed && (
 												<span
 													style={{
 														backgroundColor: '#fee2e2',

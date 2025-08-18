@@ -1,6 +1,6 @@
 /**
  * Content Script for Metadata Wizard Chrome Extension
- * Intercepts fetch requests and XMLHttpRequests to capture response data
+ * Injects a page-context interceptor for fetch/XMLHttpRequest to capture response bodies
  */
 
 // Cache for URL patterns to avoid frequent messaging
@@ -55,128 +55,67 @@ async function isContentTargetEndpoint(url: string): Promise<boolean> {
 	return isMatch;
 }
 
-// Override fetch to capture responses
-const originalFetch = window.fetch;
-window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-	const url = input instanceof Request ? input.url : input.toString();
-
-	// Check if this is a target endpoint
-	if (await isContentTargetEndpoint(url)) {
-		console.log('[Metadata Wizard Content] 🔍 Intercepting fetch request:', url);
-
-		try {
-			const response = await originalFetch(input, init);
-
-			// Clone response to read it without consuming the original
-			const clonedResponse = response.clone();
-
-			// Try to read response data
-			try {
-				const responseData = await clonedResponse.json();
-
-				// Send response data to background script
-				chrome.runtime
-					.sendMessage({
-						type: 'RESPONSE_CAPTURED',
-						url: url,
-						data: responseData,
-						timestamp: Date.now(),
-					})
-					.catch(console.error);
-
-				console.log('[Metadata Wizard Content] ✅ Captured response data for:', url);
-			} catch (error) {
-				console.log('[Metadata Wizard Content] ❌ Failed to parse response as JSON:', error);
-			}
-
-			return response;
-		} catch (error) {
-			console.log('[Metadata Wizard Content] ❌ Fetch error:', error);
-			throw error;
-		}
+// Inject a page-context script that patches fetch and XHR so we can read response bodies
+function injectPageInterceptorFromFile() {
+	try {
+		const s = document.createElement('script');
+		// The file is packaged by vite into dist and is web_accessible via manifest
+		s.src = chrome.runtime.getURL('pageInterceptor.js');
+		s.onload = () => s.remove();
+		(document.documentElement || document.head || document.body).appendChild(s);
+	} catch (e) {
+		console.log('[Metadata Wizard Content] ❌ Failed to inject interceptor file:', e);
 	}
+}
 
-	// For non-target requests, use original fetch
-	return originalFetch(input, init);
-};
+// Inject immediately to catch earliest requests
+injectPageInterceptorFromFile();
 
-// Override XMLHttpRequest to capture responses
-const originalXMLHttpRequest = window.XMLHttpRequest;
-window.XMLHttpRequest = function () {
-	const xhr = new originalXMLHttpRequest();
-	const originalOpen = xhr.open;
-	const originalSend = xhr.send;
-
-	let requestUrl = '';
-
-	xhr.open = function (
-		method: string,
-		url: string | URL,
-		async: boolean = true,
-		username?: string | null,
-		password?: string | null
-	) {
-		requestUrl = url.toString();
-		return originalOpen.call(this, method, url, async, username, password);
-	};
-
-	xhr.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
-		// Check if this is a target endpoint asynchronously
-		isContentTargetEndpoint(requestUrl).then((isTarget) => {
-			if (isTarget) {
-				console.log('[Metadata Wizard Content] 🔍 Intercepting XHR request:', requestUrl);
-
-				// Add response handler
-				xhr.addEventListener('load', function () {
-					if (xhr.status >= 200 && xhr.status < 300) {
-						try {
-							const responseData = JSON.parse(xhr.responseText);
-
-							// Send response data to background script
-							chrome.runtime
-								.sendMessage({
-									type: 'RESPONSE_CAPTURED',
-									url: requestUrl,
-									data: responseData,
-									timestamp: Date.now(),
-								})
-								.catch(console.error);
-
-							console.log('[Metadata Wizard Content] ✅ Captured XHR response data for:', requestUrl);
-						} catch (error) {
-							console.log('[Metadata Wizard Content] ❌ Failed to parse XHR response as JSON:', error);
-						}
-					}
-				});
-			}
-		});
-
-		return originalSend.apply(this, [body]);
-	};
-
-	return xhr;
-} as any;
-
-// Preserve the original constructor properties
-Object.setPrototypeOf(window.XMLHttpRequest, originalXMLHttpRequest);
-Object.setPrototypeOf(window.XMLHttpRequest.prototype, originalXMLHttpRequest.prototype);
+// Relay captured responses from the page to the background
+window.addEventListener('message', (event) => {
+		if (event.source !== window) return;
+		const data = event.data;
+		if (data && data.type === 'MW_RESPONSE_CAPTURED') {
+				chrome.runtime.sendMessage({
+						type: 'RESPONSE_CAPTURED',
+						url: data.url,
+						data: data.data,
+						timestamp: data.timestamp,
+				}).catch(() => {});
+		}
+});
 
 // Listen for pattern updates from background script
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 	if (message.type === 'PATTERNS_UPDATED') {
 		console.log('[Metadata Wizard Content] 🔄 Received pattern update notification');
 		refreshPatternCache();
+		// Push latest patterns to the injected script
+		getContentURLPatterns().then((patterns) => {
+			window.postMessage({ type: 'MW_UPDATE_PATTERNS', patterns }, '*');
+		});
 		sendResponse({ success: true });
 	}
 });
 
 // Get current tab info for logging
-chrome.runtime
-	.sendMessage({ type: 'DEBUG_INFO' })
-	.then(() => {
-		console.log('[Metadata Wizard Content] 🚀 Content script loaded and request interceptors installed');
-		console.log('[Metadata Wizard Content] 📋 Active tab ID tracking initialized');
+// Kick off initial pattern sync without delaying injection
+getContentURLPatterns()
+	.then((initial) => {
+		window.postMessage({ type: 'MW_UPDATE_PATTERNS', patterns: initial }, '*');
 	})
-	.catch(() => {
-		console.log('[Metadata Wizard Content] 🚀 Content script loaded and request interceptors installed');
+	.catch(() => {})
+	.finally(() => {
+		// Send again shortly after load to catch early requests
+		setTimeout(async () => {
+			const latest = await getContentURLPatterns();
+			window.postMessage({ type: 'MW_UPDATE_PATTERNS', patterns: latest }, '*');
+		}, 150);
+		setTimeout(async () => {
+			const latest = await getContentURLPatterns();
+			window.postMessage({ type: 'MW_UPDATE_PATTERNS', patterns: latest }, '*');
+		}, 1000);
 	});
+
+// Optional debug info request (non-blocking)
+chrome.runtime.sendMessage({ type: 'DEBUG_INFO' }).catch(() => {});

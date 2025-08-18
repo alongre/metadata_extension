@@ -31,14 +31,15 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 
 	useEffect(() => {
 		if (selectedRequest) {
-			const dataToShow = selectedRequest.overrideData ||
-				selectedRequest.responseData || {
+			const hasResponse = selectedRequest.responseData !== undefined;
+			const dataToShow = selectedRequest.overrideData ??
+				(hasResponse ? selectedRequest.responseData : {
 					message: 'No response data captured yet',
 					endpoint: selectedRequest.endpoint,
 					timestamp: selectedRequest.timestamp,
 					note: 'This request was captured but no response data is available.',
 					captured_at: new Date(selectedRequest.timestamp).toISOString(),
-				};
+				});
 
 			const formattedJson = JSON.stringify(dataToShow, null, 2);
 			setEditorValue(formattedJson);
@@ -48,6 +49,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 		} else {
 			setEditorValue('');
 			setHasChanges(false);
+			setJsonObject(null);
 		}
 	}, [selectedRequest]);
 
@@ -73,13 +75,11 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 			setEditorValue(value);
 			setHasChanges(true);
 			validateJson(value);
-
-			// Try to parse and update JSON object for JsonView
 			try {
 				const parsed = JSON.parse(value);
 				setJsonObject(parsed);
-			} catch (error) {
-				// Keep the previous object if parsing fails
+			} catch {
+				// Keep prior jsonObject on parse failure
 			}
 		}
 	};
@@ -93,7 +93,6 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 			const end = textarea.selectionEnd;
 
 			if (e.shiftKey) {
-				// Remove tab (unindent)
 				const beforeSelection = editorValue.substring(0, start);
 				const afterSelection = editorValue.substring(end);
 				const lines = beforeSelection.split('\n');
@@ -104,19 +103,16 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 					const newValue = beforeSelection.substring(0, currentLineStart) + currentLine.substring(1) + afterSelection;
 					setEditorValue(newValue);
 					setHasChanges(true);
-
 					setTimeout(() => {
 						textarea.selectionStart = start - 1;
 						textarea.selectionEnd = end - 1;
 					}, 0);
 				}
 			} else {
-				// Add tab (indent)
 				const newValue = editorValue.substring(0, start) + '\t' + editorValue.substring(end);
 				setEditorValue(newValue);
 				setHasChanges(true);
 				validateJson(newValue);
-
 				setTimeout(() => {
 					textarea.selectionStart = start + 1;
 					textarea.selectionEnd = start + 1;
@@ -127,7 +123,6 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 
 	const handleSave = async () => {
 		if (!selectedRequest || !isValidJson || !hasChanges) return;
-
 		setIsSaving(true);
 		try {
 			const data = JSON.parse(editorValue);
@@ -147,7 +142,6 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 
 	const formatJson = () => {
 		if (!isValidJson) return;
-
 		try {
 			const parsed = JSON.parse(editorValue);
 			const formatted = JSON.stringify(parsed, null, 2);
@@ -159,77 +153,22 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 
 	if (!selectedRequest) {
 		return (
-			<div
-				style={{
-					height: '100%',
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'center',
-					backgroundColor: '#f9fafb',
-				}}
-			>
+			<div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f9fafb' }}>
 				<div style={{ textAlign: 'center', padding: '48px' }}>
-					<div
-						style={{
-							width: '96px',
-							height: '96px',
-							backgroundColor: '#dbeafe',
-							borderRadius: '50%',
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							margin: '0 auto 24px',
-						}}
-					>
+					<div style={{ width: '96px', height: '96px', backgroundColor: '#dbeafe', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
 						<FileJson size={40} style={{ color: '#2563eb' }} />
 					</div>
-					<h2
-						style={{
-							fontSize: '24px',
-							fontWeight: 'bold',
-							color: '#111827',
-							margin: '0 0 12px 0',
-						}}
-					>
-						Select a Request
-					</h2>
-					<p
-						style={{
-							color: '#6b7280',
-							margin: '0 0 24px 0',
-							maxWidth: '384px',
-							lineHeight: '1.5',
-						}}
-					>
+					<h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', margin: '0 0 12px 0' }}>Select a Request</h2>
+					<p style={{ color: '#6b7280', margin: '0 0 24px 0', maxWidth: '384px', lineHeight: '1.5' }}>
 						Choose a captured request from the sidebar to view and edit its JSON response data
 					</p>
-					<div
-						style={{
-							backgroundColor: '#eff6ff',
-							border: '1px solid #bfdbfe',
-							borderRadius: '8px',
-							padding: '16px',
-							maxWidth: '384px',
-							margin: '0 auto',
-						}}
-					>
+					<div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '16px', maxWidth: '384px', margin: '0 auto' }}>
 						<div style={{ display: 'flex', alignItems: 'center' }}>
 							<Zap style={{ color: '#2563eb', marginRight: '8px' }} size={20} />
 							<div style={{ textAlign: 'left' }}>
 								<p style={{ fontWeight: '500', color: '#1e3a8a', margin: '0 0 4px 0' }}>Pro Tip</p>
 								<p style={{ fontSize: '14px', color: '#1d4ed8', margin: 0 }}>
-									Navigate to pages with{' '}
-									<code
-										style={{
-											backgroundColor: '#dbeafe',
-											padding: '2px 4px',
-											borderRadius: '3px',
-											fontFamily: 'monospace',
-										}}
-									>
-										Matching URL patterns
-									</code>{' '}
-									endpoints to start capturing
+									Navigate to pages with <code style={{ backgroundColor: '#dbeafe', padding: '2px 4px', borderRadius: '3px', fontFamily: 'monospace' }}>Matching URL patterns</code> endpoints to start capturing
 								</p>
 							</div>
 						</div>
@@ -242,67 +181,22 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 	return (
 		<div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 			{/* Header */}
-			<div
-				style={{
-					backgroundColor: '#f9fafb',
-					borderBottom: '1px solid #e5e7eb',
-					padding: '16px',
-				}}
-			>
+			<div style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '16px' }}>
 				<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
 					<div>
-						<h2
-							style={{
-								fontSize: '20px',
-								fontWeight: 'bold',
-								color: '#111827',
-								display: 'flex',
-								alignItems: 'center',
-								margin: 0,
-							}}
-						>
+						<h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#111827', display: 'flex', alignItems: 'center', margin: 0 }}>
 							<FileJson style={{ marginRight: '8px', color: '#2563eb' }} size={24} />
 							{selectedRequest.endpoint}
 						</h2>
-						<div
-							style={{
-								display: 'flex',
-								alignItems: 'center',
-								gap: '16px',
-								marginTop: '8px',
-								fontSize: '14px',
-								color: '#6b7280',
-							}}
-						>
+						<div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
 							<span style={{ fontWeight: '500' }}>{selectedRequest.method}</span>
 							<span>•</span>
 							<span>{new Date(selectedRequest.timestamp).toLocaleString()}</span>
 							{selectedRequest.isOverridden && (
-								<span
-									style={{
-										backgroundColor: '#fed7aa',
-										color: '#9a3412',
-										padding: '4px 8px',
-										borderRadius: '9999px',
-										fontSize: '12px',
-										fontWeight: '500',
-									}}
-								>
-									🔄 Overridden
-								</span>
+								<span style={{ backgroundColor: '#fed7aa', color: '#9a3412', padding: '4px 8px', borderRadius: '9999px', fontSize: '12px', fontWeight: '500' }}>🔄 Overridden</span>
 							)}
 						</div>
-						<p
-							style={{
-								fontSize: '12px',
-								color: '#6b7280',
-								marginTop: '4px',
-								margin: '4px 0 0 0',
-								overflow: 'hidden',
-								textOverflow: 'ellipsis',
-								whiteSpace: 'nowrap',
-							}}
-						>
+						<p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
 							{selectedRequest.url}
 						</p>
 					</div>
@@ -310,17 +204,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 
 				{/* Status Messages */}
 				{!isValidJson && (
-					<div
-						style={{
-							marginTop: '12px',
-							padding: '12px',
-							backgroundColor: '#fef2f2',
-							border: '1px solid #fecaca',
-							borderRadius: '8px',
-							display: 'flex',
-							alignItems: 'center',
-						}}
-					>
+					<div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
 						<AlertTriangle style={{ color: '#ef4444', marginRight: '8px' }} size={16} />
 						<span style={{ fontSize: '14px', color: '#991b1b' }}>
 							<strong>Invalid JSON:</strong> {jsonError}
@@ -329,58 +213,23 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 				)}
 
 				{hasChanges && isValidJson && (
-					<div
-						style={{
-							marginTop: '12px',
-							padding: '12px',
-							backgroundColor: '#f0fdf4',
-							border: '1px solid #bbf7d0',
-							borderRadius: '8px',
-							display: 'flex',
-							alignItems: 'center',
-						}}
-					>
+					<div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
 						<CheckCircle style={{ color: '#22c55e', marginRight: '8px' }} size={16} />
 						<span style={{ fontSize: '14px', color: '#166534' }}>Ready to save your changes</span>
 					</div>
 				)}
 			</div>
 
-			{/* Editor Area - Flex Row Layout */}
-			<div style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', paddingRight: '16px' }}>
-				{/* Left Side - Action Buttons */}
-
-				{/* Right Side - JSON Editor Container */}
-				<div style={{ flex: 1, gap: '16px', marginBottom: '16px', marginRight: '40px' }}>
-					{useJsonView && jsonObject ? (
-						// JSON Tree View
-						<div
-							style={{
-								width: '100%',
-								height: '100%',
-								border: '2px solid #d1d5db',
-								borderRadius: '12px',
-								overflow: 'auto',
-								backgroundColor: '#ffffff',
-								boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-								padding: '16px',
-							}}
-						>
-							<JsonView
-								value={jsonObject}
-								enableClipboard={false}
-								displayDataTypes={false}
-								displayObjectSize={false}
-								style={{
-									backgroundColor: '#ffffff',
-									fontSize: '14px',
-									fontFamily: 'Monaco, Consolas, "Courier New", monospace',
-								}}
-							/>
-						</div>
-					) : (
-						// Text Editor
-						<div style={{ width: '100%', height: '100%' }}>
+			{/* Editor Area */}
+			<div style={{ position: 'relative', flex: 1, padding: '16px', paddingRight: '16px' }}>
+				<div style={{ position: 'absolute', inset: '16px 16px 72px 16px' }}>
+					{/* Scrollable container */}
+					<div style={{ width: '100%', height: '100%', border: '2px solid #d1d5db', borderRadius: '12px', overflow: 'auto', backgroundColor: '#ffffff', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}>
+						{useJsonView && jsonObject ? (
+							<div style={{ padding: '16px' }}>
+								<JsonView value={jsonObject} enableClipboard={false} displayDataTypes={false} displayObjectSize={false} style={{ backgroundColor: '#ffffff', fontSize: '14px', fontFamily: 'Monaco, Consolas, "Courier New", monospace' }} />
+							</div>
+						) : (
 							<textarea
 								ref={textareaRef}
 								value={editorValue}
@@ -388,175 +237,33 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 								onKeyDown={handleKeyDown}
 								placeholder='JSON data will appear here...'
 								spellCheck={false}
-								style={{
-									width: '100%',
-									height: '100%',
-									padding: '16px',
-									border: '2px solid #d1d5db',
-									borderRadius: '12px',
-									fontFamily: 'Monaco, Consolas, "Courier New", monospace',
-									fontSize: '14px',
-									lineHeight: '1.6',
-									resize: 'none',
-									outline: 'none',
-									backgroundColor: '#ffffff',
-									boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-									transition: 'border-color 0.2s, box-shadow 0.2s',
-								}}
+								style={{ width: '100%', height: '100%', padding: '16px', border: 'none', outline: 'none', fontFamily: 'Monaco, Consolas, "Courier New", monospace', fontSize: '14px', lineHeight: '1.6', resize: 'none', backgroundColor: '#ffffff' }}
 								onFocus={(e) => {
-									e.currentTarget.style.borderColor = '#3b82f6';
-									e.currentTarget.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.1)';
+									(e.currentTarget.parentElement as HTMLElement).style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.1)';
+									(e.currentTarget.parentElement as HTMLElement).style.borderColor = '#3b82f6';
 								}}
 								onBlur={(e) => {
-									e.currentTarget.style.borderColor = '#d1d5db';
-									e.currentTarget.style.boxShadow = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
+									(e.currentTarget.parentElement as HTMLElement).style.boxShadow = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
+									(e.currentTarget.parentElement as HTMLElement).style.borderColor = '#d1d5db';
 								}}
 							/>
-						</div>
-					)}
+						)}
+					</div>
 				</div>
 
-				{/* Bottom Right Action Buttons */}
-				<div
-					style={{
-						display: 'flex',
-						justifyContent: 'flex-end',
-						marginTop: '40px',
-
-						gap: '12px',
-						height: '40px',
-					}}
-				>
-					{/* View Toggle */}
-					<button
-						onClick={() => setUseJsonView(!useJsonView)}
-						style={{
-							padding: '8px 16px',
-							fontSize: '14px',
-							fontWeight: '500',
-							color: '#2563eb',
-							backgroundColor: useJsonView ? '#eff6ff' : '#f9fafb',
-							border: `1px solid ${useJsonView ? '#3b82f6' : '#d1d5db'}`,
-							borderRadius: '8px',
-							cursor: 'pointer',
-							transition: 'all 0.2s',
-							height: '40px',
-						}}
-						onMouseEnter={(e) => {
-							e.currentTarget.style.backgroundColor = useJsonView ? '#dbeafe' : '#f3f4f6';
-						}}
-						onMouseLeave={(e) => {
-							e.currentTarget.style.backgroundColor = useJsonView ? '#eff6ff' : '#f9fafb';
-						}}
-					>
-						{useJsonView ? '📝 Edit' : '🌳 View'}
-					</button>
-
-					{/* Format Button */}
-					<button
-						onClick={formatJson}
-						disabled={!isValidJson}
-						style={{
-							padding: '8px 16px',
-							fontSize: '14px',
-							fontWeight: '500',
-							color: isValidJson ? '#374151' : '#9ca3af',
-							backgroundColor: '#ffffff',
-							border: '1px solid #d1d5db',
-							borderRadius: '8px',
-							cursor: isValidJson ? 'pointer' : 'not-allowed',
-							opacity: isValidJson ? 1 : 0.5,
-							transition: 'all 0.2s',
-							height: '40px',
-						}}
-						onMouseEnter={(e) => {
-							if (isValidJson) {
-								e.currentTarget.style.backgroundColor = '#f9fafb';
-							}
-						}}
-						onMouseLeave={(e) => {
-							if (isValidJson) {
-								e.currentTarget.style.backgroundColor = '#ffffff';
-							}
-						}}
-					>
-						Format
-					</button>
-
-					{/* Clear Override */}
-					{selectedRequest?.isOverridden && (
-						<button
-							onClick={handleClearOverride}
-							style={{
-								padding: '8px 16px',
-								fontSize: '14px',
-								fontWeight: '500',
-								color: '#c2410c',
-								backgroundColor: '#fff7ed',
-								border: '1px solid #fed7aa',
-								borderRadius: '8px',
-								cursor: 'pointer',
-								transition: 'all 0.2s',
-								display: 'flex',
-								alignItems: 'center',
-								justifyContent: 'center',
-								height: '40px',
-							}}
-							onMouseEnter={(e) => {
-								e.currentTarget.style.backgroundColor = '#ffedd5';
-							}}
-							onMouseLeave={(e) => {
-								e.currentTarget.style.backgroundColor = '#fff7ed';
-							}}
-						>
-							<RotateCcw size={16} style={{ marginRight: '8px' }} />
-							Reset
-						</button>
-					)}
-
-					{/* Save Button */}
+				{/* Bottom Action Bar - pinned bottom-left */}
+				<div style={{ position: 'absolute', left: '16px', bottom: '16px', display: 'flex', justifyContent: 'flex-start', gap: '12px', height: '40px' }}>
+					{/* Save Button (left-aligned and first) */}
 					<button
 						onClick={handleSave}
 						disabled={!hasChanges || !isValidJson || isSaving}
-						style={{
-							padding: '8px 16px',
-							backgroundColor: hasChanges && isValidJson && !isSaving ? '#2563eb' : '#9ca3af',
-							color: 'white',
-							fontWeight: '600',
-							borderRadius: '8px',
-							border: 'none',
-							cursor: hasChanges && isValidJson && !isSaving ? 'pointer' : 'not-allowed',
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-							transition: 'all 0.2s',
-							height: '40px',
-						}}
-						onMouseEnter={(e) => {
-							if (hasChanges && isValidJson && !isSaving) {
-								e.currentTarget.style.backgroundColor = '#1d4ed8';
-							}
-						}}
-						onMouseLeave={(e) => {
-							if (hasChanges && isValidJson && !isSaving) {
-								e.currentTarget.style.backgroundColor = '#2563eb';
-							}
-						}}
+						style={{ padding: '8px 16px', backgroundColor: hasChanges && isValidJson && !isSaving ? '#2563eb' : '#9ca3af', color: 'white', fontWeight: '600', borderRadius: '8px', border: 'none', cursor: hasChanges && isValidJson && !isSaving ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', transition: 'all 0.2s', height: '40px' }}
+						onMouseEnter={(e) => { if (hasChanges && isValidJson && !isSaving) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#1d4ed8'; }}
+						onMouseLeave={(e) => { if (hasChanges && isValidJson && !isSaving) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#2563eb'; }}
 					>
 						{isSaving ? (
 							<>
-								<div
-									style={{
-										width: '16px',
-										height: '16px',
-										border: '2px solid white',
-										borderTop: '2px solid transparent',
-										borderRadius: '50%',
-										marginRight: '8px',
-										animation: 'spin 1s linear infinite',
-									}}
-								/>
+								<div style={{ width: '16px', height: '16px', border: '2px solid white', borderTop: '2px solid transparent', borderRadius: '50%', marginRight: '8px', animation: 'spin 1s linear infinite' }} />
 								Saving...
 							</>
 						) : (
@@ -566,6 +273,40 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 							</>
 						)}
 					</button>
+
+					{/* View Toggle */}
+					<button
+						onClick={() => setUseJsonView(!useJsonView)}
+						style={{ padding: '8px 16px', fontSize: '14px', fontWeight: '500', color: '#2563eb', backgroundColor: useJsonView ? '#eff6ff' : '#f9fafb', border: `1px solid ${useJsonView ? '#3b82f6' : '#d1d5db'}`, borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', height: '40px' }}
+						onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = useJsonView ? '#dbeafe' : '#f3f4f6'; }}
+						onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = useJsonView ? '#eff6ff' : '#f9fafb'; }}
+					>
+						{useJsonView ? '📝 Edit' : '🌳 View'}
+					</button>
+
+					{/* Format Button */}
+					<button
+						onClick={formatJson}
+						disabled={!isValidJson}
+						style={{ padding: '8px 16px', fontSize: '14px', fontWeight: '500', color: isValidJson ? '#374151' : '#9ca3af', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', cursor: isValidJson ? 'pointer' : 'not-allowed', opacity: isValidJson ? 1 : 0.5, transition: 'all 0.2s', height: '40px' }}
+						onMouseEnter={(e) => { if (isValidJson) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#f9fafb'; }}
+						onMouseLeave={(e) => { if (isValidJson) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ffffff'; }}
+					>
+						Format
+					</button>
+
+					{/* Clear Override */}
+					{selectedRequest?.isOverridden && (
+						<button
+							onClick={handleClearOverride}
+							style={{ padding: '8px 16px', fontSize: '14px', fontWeight: '500', color: '#c2410c', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40px' }}
+							onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ffedd5'; }}
+							onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#fff7ed'; }}
+						>
+							<RotateCcw size={16} style={{ marginRight: '8px' }} />
+							Reset
+						</button>
+					)}
 				</div>
 			</div>
 		</div>

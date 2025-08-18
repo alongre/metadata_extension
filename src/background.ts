@@ -1,7 +1,7 @@
 /**
  * Background Service Worker for Metadata Wizard Chrome Extension
  * Handles webRequest interception and storage of API calls with configurable URL patterns
- * Only intercepts requests from the active tab
+ * Intercepts requests in all tabs that match user URL patterns
  */
 
 // Track the active tab
@@ -13,6 +13,7 @@ interface CapturedRequest {
 	endpoint: string;
 	method: string;
 	timestamp: number;
+	requestBody?: any;
 	requestHeaders?: chrome.webRequest.HttpHeader[];
 	responseHeaders?: chrome.webRequest.HttpHeader[];
 	responseStatus?: number;
@@ -164,23 +165,35 @@ async function updateActiveTab() {
 	}
 }
 
-// Check if request is from active tab
-function isFromActiveTab(tabId?: number): boolean {
-	if (activeTabId === null || tabId === undefined) {
-		return false;
+// Note: We no longer restrict to the active tab. Keep tab tracking for future UX, but intercept across all tabs.
+
+// Helper to decode request bodies when available
+function decodeRequestBody(body?: chrome.webRequest.WebRequestBody): any | undefined {
+	if (!body) return undefined;
+	try {
+		if (body.formData) {
+			return body.formData;
+		}
+		if (body.raw && body.raw.length > 0 && body.raw[0].bytes) {
+			const decoder = new TextDecoder('utf-8');
+			const text = decoder.decode(body.raw[0].bytes);
+			try {
+				return JSON.parse(text);
+			} catch {
+				return text;
+			}
+		}
+	} catch (e) {
+		debugLog(`❌ Failed to decode request body: ${e}`);
 	}
-	return tabId === activeTabId;
+	return undefined;
 }
 
 // Set up webRequest listeners with enhanced debugging
 chrome.webRequest.onBeforeRequest.addListener(
 	(details) => {
-		// Only process requests from active tab
-		if (!isFromActiveTab(details.tabId)) {
-			return; // Skip requests from non-active tabs silently
-		}
-
-		debugLog(`🔍 Checking request from active tab: ${details.url}`);
+	// Process requests from all tabs
+	debugLog(`🔍 Checking request: ${details.url}`);
 
 		// Handle async pattern matching
 		isTargetEndpoint(details.url)
@@ -201,6 +214,8 @@ chrome.webRequest.onBeforeRequest.addListener(
 					method: details.method,
 					timestamp: details.timeStamp,
 					isOverridden: false,
+					// Attempt to capture request body when present
+					requestBody: decodeRequestBody(details.requestBody ?? undefined),
 				};
 
 				// Store request asynchronously
@@ -222,11 +237,6 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
 	(details) => {
-		// Only process requests from active tab
-		if (!isFromActiveTab(details.tabId)) {
-			return;
-		}
-
 		isTargetEndpoint(details.url)
 			.then((matchResult) => {
 				if (!matchResult.isMatch) {
@@ -258,11 +268,6 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 // Enhanced response monitoring
 chrome.webRequest.onResponseStarted.addListener(
 	(details) => {
-		// Only process requests from active tab
-		if (!isFromActiveTab(details.tabId)) {
-			return;
-		}
-
 		isTargetEndpoint(details.url)
 			.then(async (matchResult) => {
 				if (!matchResult.isMatch) {
@@ -292,11 +297,6 @@ chrome.webRequest.onResponseStarted.addListener(
 
 chrome.webRequest.onCompleted.addListener(
 	(details) => {
-		// Only process requests from active tab
-		if (!isFromActiveTab(details.tabId)) {
-			return;
-		}
-
 		isTargetEndpoint(details.url)
 			.then(async (matchResult) => {
 				if (!matchResult.isMatch) {
@@ -416,17 +416,35 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			(async () => {
 				try {
 					const stored = await getStoredRequests();
-					// Note: requestId generation for response matching
-
-					// Find matching request by URL pattern (since timestamp might not match exactly)
-					const matchingRequest = Object.values(stored).find(
-						(r: CapturedRequest) => r.url === message.url || r.url.split('?')[0] === message.url.split('?')[0]
+					// Better matching: prefer the most recent request for the same URL (ignoring query)
+					const urlNoQuery = (message.url || '').split('?')[0];
+					const candidates = Object.values(stored).filter(
+						(r: CapturedRequest) => r.url === message.url || r.url.split('?')[0] === urlNoQuery
 					);
+
+					let matchingRequest: CapturedRequest | undefined = undefined;
+					if (candidates.length > 0) {
+						// Prefer one without responseData yet
+						const pending = candidates.filter((r) => r.responseData === undefined);
+						const pool = pending.length > 0 ? pending : candidates;
+						// If a timestamp from the page is provided, pick the closest earlier request
+						if (message.timestamp) {
+							pool.sort((a, b) => Math.abs((message.timestamp as number) - a.timestamp) - Math.abs((message.timestamp as number) - b.timestamp));
+							matchingRequest = pool[0];
+						} else {
+							// Fallback to most recent
+							pool.sort((a, b) => b.timestamp - a.timestamp);
+							matchingRequest = pool[0];
+						}
+					}
 
 					if (matchingRequest) {
 						matchingRequest.responseData = message.data;
 						await storeRequest(matchingRequest);
-						debugLog(`📡 Captured response data for: ${matchingRequest.endpoint}`, message.data);
+						debugLog(`📡 Captured response data for: ${matchingRequest.endpoint}`, {
+							url: matchingRequest.url,
+							size: typeof message.data === 'string' ? (message.data as string).length : undefined,
+						});
 					} else {
 						debugLog(`❌ No matching request found for response: ${message.url}`);
 					}

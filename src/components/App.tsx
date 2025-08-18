@@ -38,8 +38,14 @@ const App: React.FC = () => {
 	const loadRequests = async () => {
 		try {
 			const response = await chrome.runtime.sendMessage({ type: 'GET_REQUESTS' });
-			const requestsArray = Object.values(response || {}) as CapturedRequest[];
-			setRequests(requestsArray.sort((a, b) => b.timestamp - a.timestamp));
+			const requestsArray = (Object.values(response || {}) as CapturedRequest[])
+				.filter((r) => r.responseData !== undefined)
+				.sort((a, b) => b.timestamp - a.timestamp);
+			setRequests(requestsArray);
+			// If the current selection has no response or was removed, clear it
+			if (selectedRequest && !requestsArray.find((r) => r.id === selectedRequest.id)) {
+				setSelectedRequest(null);
+			}
 		} catch (error) {
 			console.error('Failed to load requests:', error);
 		}

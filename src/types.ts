@@ -8,6 +8,7 @@ export interface CapturedRequest {
 	endpoint: string;
 	method: string;
 	timestamp: number;
+	requestBody?: any;
 	requestHeaders?: chrome.webRequest.HttpHeader[];
 	responseHeaders?: chrome.webRequest.HttpHeader[];
 	responseStatus?: number;
