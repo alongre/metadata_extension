@@ -1,133 +1,463 @@
-import React, { useState, useEffect, useRef } from 'react';
-import JsonView from '@uiw/react-json-view';
-import { Save, RotateCcw, FileJson, CheckCircle, AlertTriangle, Zap } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Save, RotateCcw, FileJson, CheckCircle, AlertTriangle, Zap, Edit3, Pencil, Trash2 } from 'lucide-react';
 import { CapturedRequest } from '../types';
 
 interface JsonEditorProps {
 	selectedRequest: CapturedRequest | null;
 	onSaveOverride: (requestId: string, data: any) => void;
 	onClearOverride: (requestId: string) => void;
+	shouldLoadData?: boolean; // New prop to control when to load data
+	onRequestUpdate?: (request: CapturedRequest) => void; // For updating request when override status changes
 }
 
-// Ensure MonacoEnvironment is configured before any Monaco Editor usage
-if (typeof window !== 'undefined') {
-	(window as any).MonacoEnvironment = {
-		getWorker: () => {
-			// Return null to disable web workers completely
-			return null;
-		},
+// React JSON Viewer component with editing capabilities
+
+// Custom JSON renderer with inline edit icons
+interface JsonEditorLineProps {
+	value: any;
+	keyName: string;
+	path: string[];
+	depth: number;
+	isLast: boolean;
+	onEdit: (path: string[], newValue: any) => void;
+	onDelete: (path: string[]) => void;
+	collapsed: boolean;
+	collapsedPaths: Set<string>;
+	onToggleCollapse: (path: string[]) => void;
+}
+
+const JsonEditorLine: React.FC<JsonEditorLineProps> = ({ 
+	value, 
+	keyName, 
+	path, 
+	depth, 
+	isLast, 
+	onEdit,
+	onDelete,
+	collapsed,
+	collapsedPaths,
+	onToggleCollapse 
+}) => {
+	const [isEditing, setIsEditing] = useState(false);
+	const [editValue, setEditValue] = useState('');
+	const indent = Array(depth).fill(null).map((_, i) => (
+		<span key={i} style={{ 
+			display: 'inline-block', 
+			width: '16px', 
+			borderLeft: depth > 0 ? '1px solid #e5e7eb' : 'none',
+			marginLeft: '2px',
+			paddingLeft: '2px'
+		}} />
+	)); // Use visual indentation with guide lines
+	
+	const startEdit = () => {
+		setEditValue(typeof value === 'string' ? value : JSON.stringify(value));
+		setIsEditing(true);
 	};
-}
+	
+	const saveEdit = () => {
+		try {
+			let newValue: any;
+			if (typeof value === 'string') {
+				newValue = editValue;
+			} else if (typeof value === 'number') {
+				newValue = Number(editValue);
+			} else if (typeof value === 'boolean') {
+				newValue = editValue === 'true';
+			} else {
+				newValue = JSON.parse(editValue);
+			}
+			onEdit(path, newValue);
+			setIsEditing(false);
+		} catch (error) {
+			// Invalid JSON, don't save
+			console.error('Invalid edit value:', error);
+		}
+	};
+	
+	const cancelEdit = () => {
+		setIsEditing(false);
+		setEditValue('');
+	};
+	
+	const renderValue = () => {
+		if (isEditing) {
+			return (
+				<input
+					type="text"
+					value={editValue}
+					onChange={(e) => setEditValue(e.target.value)}
+					onBlur={saveEdit}
+					onKeyDown={(e) => {
+						if (e.key === 'Enter') saveEdit();
+						if (e.key === 'Escape') cancelEdit();
+					}}
+					autoFocus
+					style={{
+						border: '1px solid #3b82f6',
+						borderRadius: '4px',
+						padding: '2px 6px',
+						fontSize: '14px',
+						fontFamily: 'inherit',
+						backgroundColor: '#ffffff',
+						color: '#1e293b',
+						minWidth: '100px',
+					}}
+				/>
+			);
+		}
+		
+		if (typeof value === 'string') {
+			return <span style={{ color: '#059669' }}>"{value}"</span>;
+		} else if (typeof value === 'number') {
+			return <span style={{ color: '#dc2626' }}>{value}</span>;
+		} else if (typeof value === 'boolean') {
+			return <span style={{ color: '#7c3aed' }}>{String(value)}</span>;
+		} else if (value === null) {
+			return <span style={{ color: '#6b7280' }}>null</span>;
+		}
+		
+		return null;
+	};
+	
+	const isObject = typeof value === 'object' && value !== null && !Array.isArray(value);
+	const isArray = Array.isArray(value);
+	const isPrimitive = !isObject && !isArray;
+	
+	if (isPrimitive) {
+		return (
+			<div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+				{indent}
+				<span style={{ fontFamily: 'monospace', fontSize: '14px' }}>
+					"{keyName}": {renderValue()}{!isLast ? ',' : ''}
+				</span>
+				{!isEditing && (
+					<div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
+						<button
+							onClick={startEdit}
+							style={{
+								padding: '2px 4px',
+								backgroundColor: 'transparent',
+								border: '1px solid #d1d5db',
+								borderRadius: '4px',
+								cursor: 'pointer',
+								opacity: 0.6,
+								transition: 'opacity 0.2s',
+							}}
+							onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+							onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+						>
+							<Pencil size={12} style={{ color: '#6b7280' }} />
+						</button>
+						<button
+							onClick={() => onDelete(path)}
+							style={{
+								padding: '2px 4px',
+								backgroundColor: 'transparent',
+								border: '1px solid #fca5a5',
+								borderRadius: '4px',
+								cursor: 'pointer',
+								opacity: 0.6,
+								transition: 'opacity 0.2s',
+							}}
+							onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+							onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+						>
+							<Trash2 size={12} style={{ color: '#dc2626' }} />
+						</button>
+					</div>
+				)}
+			</div>
+		);
+	}
+	
+	// For objects and arrays - simplified view
+	if (isObject || isArray) {
+		const entries = isArray ? value.map((v: any, i: number) => [i, v]) : Object.entries(value);
+		const bracket = isArray ? ['[', ']'] : ['{', '}'];
+		
+		if (collapsed) {
+			// Show collapsed state with proper indentation and summary
+			const itemCount = entries.length;
+			const summary = isArray 
+				? `[${itemCount} item${itemCount !== 1 ? 's' : ''}]`
+				: `{${itemCount} item${itemCount !== 1 ? 's' : ''}}`;
+			
+			return (
+				<div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+					{indent}
+					<button
+						onClick={() => onToggleCollapse(path)}
+						style={{
+							marginRight: '6px',
+							padding: '2px 6px',
+							backgroundColor: '#f3f4f6',
+							border: '1px solid #d1d5db',
+							borderRadius: '4px',
+							cursor: 'pointer',
+							fontSize: '12px',
+							color: '#374151',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							minWidth: '20px',
+							height: '20px',
+							transition: 'all 0.2s',
+						}}
+						onMouseEnter={(e) => {
+							e.currentTarget.style.backgroundColor = '#e5e7eb';
+							e.currentTarget.style.borderColor = '#9ca3af';
+						}}
+						onMouseLeave={(e) => {
+							e.currentTarget.style.backgroundColor = '#f3f4f6';
+							e.currentTarget.style.borderColor = '#d1d5db';
+						}}
+					>
+						▶
+					</button>
+					<span style={{ fontFamily: 'monospace', fontSize: '14px' }}>
+						"{keyName}": <span style={{ color: '#6b7280', fontStyle: 'italic' }}>{summary}</span>{!isLast ? ',' : ''}
+					</span>
+				</div>
+			);
+		}
+		
+		return (
+			<div>
+				<div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+					{indent}
+					<button
+						onClick={() => onToggleCollapse(path)}
+						style={{
+							marginRight: '6px',
+							padding: '2px 6px',
+							backgroundColor: '#f3f4f6',
+							border: '1px solid #d1d5db',
+							borderRadius: '4px',
+							cursor: 'pointer',
+							fontSize: '12px',
+							color: '#374151',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							minWidth: '20px',
+							height: '20px',
+							transition: 'all 0.2s',
+						}}
+						onMouseEnter={(e) => {
+							e.currentTarget.style.backgroundColor = '#e5e7eb';
+							e.currentTarget.style.borderColor = '#9ca3af';
+						}}
+						onMouseLeave={(e) => {
+							e.currentTarget.style.backgroundColor = '#f3f4f6';
+							e.currentTarget.style.borderColor = '#d1d5db';
+						}}
+					>
+						▼
+					</button>
+					<span style={{ fontFamily: 'monospace', fontSize: '14px' }}>
+						"{keyName}": {bracket[0]}
+					</span>
+				</div>
+				{entries.map(([key, val], index) => {
+					const childPath = [...path, String(key)];
+					const childPathKey = childPath.join('.');
+					const isChildCollapsed = collapsedPaths ? collapsedPaths.has(childPathKey) : false;
+					return (
+						<JsonEditorLine
+							key={key}
+							value={val}
+							keyName={String(key)}
+							path={childPath}
+							depth={depth + 1}
+							isLast={index === entries.length - 1}
+							onEdit={onEdit}
+							onDelete={onDelete}
+							collapsed={isChildCollapsed}
+							collapsedPaths={collapsedPaths}
+							onToggleCollapse={onToggleCollapse}
+						/>
+					);
+				})}
+				<div style={{ display: 'flex', alignItems: 'center', fontFamily: 'monospace', fontSize: '14px' }}>
+					{indent}{bracket[1]}{!isLast ? ',' : ''}
+				</div>
+			</div>
+		);
+	}
+	
+	return null;
+};
 
-const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride, onClearOverride }) => {
-	const [editorValue, setEditorValue] = useState('');
-	const [isValidJson, setIsValidJson] = useState(true);
+const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride, onClearOverride, shouldLoadData = false, onRequestUpdate }) => {
+	const [jsonData, setJsonData] = useState<any>(null);
+	const [editedData, setEditedData] = useState<any>(null);
 	const [hasChanges, setHasChanges] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
-	const [jsonError, setJsonError] = useState('');
-	const [jsonObject, setJsonObject] = useState<any>(null);
-	const [useJsonView, setUseJsonView] = useState(true);
-	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [isEditing, setIsEditing] = useState(false);
+	const [parseError, setParseError] = useState<string | null>(null);
+	const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set());
+
+	// Helper function to update nested values
+	const updateNestedValue = (obj: any, path: string[], newValue: any): any => {
+		if (path.length === 0) return newValue;
+		
+		const result = Array.isArray(obj) ? [...obj] : { ...obj };
+		const key = path[0];
+		
+		if (path.length === 1) {
+			result[key] = newValue;
+		} else {
+			result[key] = updateNestedValue(result[key], path.slice(1), newValue);
+		}
+		
+		return result;
+	};
+
+	// Handle inline editing
+	const handleInlineEdit = (path: string[], newValue: any) => {
+		const updated = updateNestedValue(editedData, path, newValue);
+		handleJsonChange(updated);
+	};
+
+	// Handle delete property
+	const handleDelete = (path: string[]) => {
+		const updated = deleteNestedValue(editedData, path);
+		handleJsonChange(updated);
+	};
+
+	// Helper function to delete nested values
+	const deleteNestedValue = (obj: any, path: string[]): any => {
+		if (path.length === 0) return obj;
+		
+		const result = Array.isArray(obj) ? [...obj] : { ...obj };
+		
+		if (path.length === 1) {
+			if (Array.isArray(result)) {
+				result.splice(Number(path[0]), 1);
+			} else {
+				delete result[path[0]];
+			}
+		} else {
+			result[path[0]] = deleteNestedValue(result[path[0]], path.slice(1));
+		}
+		
+		return result;
+	};
+
+	// Handle collapse/expand
+	const handleToggleCollapse = (path: string[]) => {
+		const pathKey = path.join('.');
+		const newCollapsed = new Set(collapsedPaths);
+		if (newCollapsed.has(pathKey)) {
+			newCollapsed.delete(pathKey);
+		} else {
+			newCollapsed.add(pathKey);
+		}
+		setCollapsedPaths(newCollapsed);
+	};
+
+	// Helper function to create default collapsed paths (collapse ALL nested nodes)
+	const createDefaultCollapsedPaths = (obj: any, currentPath: string[] = [], collapsedSet: Set<string> = new Set()): Set<string> => {
+		if (typeof obj !== 'object' || obj === null) {
+			return collapsedSet;
+		}
+
+		// Always collapse any node that has children (except the root)
+		if (currentPath.length >= 1) {
+			collapsedSet.add(currentPath.join('.'));
+		}
+
+		// Recurse into object/array properties to find all nested structures
+		if (Array.isArray(obj)) {
+			obj.forEach((item, index) => {
+				createDefaultCollapsedPaths(item, [...currentPath, String(index)], collapsedSet);
+			});
+		} else {
+			Object.entries(obj).forEach(([key, value]) => {
+				createDefaultCollapsedPaths(value, [...currentPath, key], collapsedSet);
+			});
+		}
+
+		return collapsedSet;
+	};
 
 	useEffect(() => {
-		if (selectedRequest) {
-			const hasResponse = selectedRequest.responseData !== undefined;
-			const dataToShow = selectedRequest.overrideData ??
-				(hasResponse ? selectedRequest.responseData : {
-					message: 'No response data captured yet',
-					endpoint: selectedRequest.endpoint,
-					timestamp: selectedRequest.timestamp,
-					note: 'This request was captured but no response data is available.',
-					captured_at: new Date(selectedRequest.timestamp).toISOString(),
-				});
-
-			const formattedJson = JSON.stringify(dataToShow, null, 2);
-			setEditorValue(formattedJson);
-			setJsonObject(dataToShow);
-			setHasChanges(false);
-			validateJson(formattedJson);
-		} else {
-			setEditorValue('');
-			setHasChanges(false);
-			setJsonObject(null);
-		}
-	}, [selectedRequest]);
-
-	const validateJson = (value: string) => {
-		if (!value.trim()) {
-			setIsValidJson(true);
-			setJsonError('');
+		// Only load data when shouldLoadData is true (sidebar item clicked)
+		if (!shouldLoadData) {
 			return;
 		}
 
-		try {
-			JSON.parse(value);
-			setIsValidJson(true);
-			setJsonError('');
-		} catch (error) {
-			setIsValidJson(false);
-			setJsonError(error instanceof Error ? error.message : 'Invalid JSON');
-		}
-	};
-
-	const handleEditorChange = (value: string | undefined) => {
-		if (value !== undefined) {
-			setEditorValue(value);
-			setHasChanges(true);
-			validateJson(value);
+		setLoadError(null);
+		setParseError(null);
+		setHasChanges(false);
+		setIsEditing(false);
+		
+		if (selectedRequest) {
 			try {
-				const parsed = JSON.parse(value);
-				setJsonObject(parsed);
-			} catch {
-				// Keep prior jsonObject on parse failure
+				console.log('JsonEditor: Processing request:', selectedRequest.endpoint);
+				console.log('JsonEditor: selectedRequest.responseData:', selectedRequest.responseData);
+				console.log('JsonEditor: selectedRequest.overrideData:', selectedRequest.overrideData);
+				
+				const hasResponse = selectedRequest.responseData !== undefined;
+				const dataToShow = selectedRequest.overrideData ?? (hasResponse ? selectedRequest.responseData : undefined);
+				console.log('JsonEditor: dataToShow', dataToShow, 'hasResponse', hasResponse);
+				console.log('JsonEditor: dataToShow type:', typeof dataToShow);
+				
+				if (dataToShow === undefined) {
+					setJsonData(null);
+					setEditedData(null);
+					setLoadError('No response data captured yet');
+					return;
+				}
+
+				// Parse data if it's a string
+				let parsedData = dataToShow;
+				if (typeof dataToShow === 'string') {
+					try {
+						parsedData = JSON.parse(dataToShow);
+					} catch (e) {
+						// If parsing fails, treat as plain string
+						parsedData = dataToShow;
+					}
+				}
+
+				console.log('JsonEditor: setting jsonData to:', parsedData);
+				setJsonData(parsedData);
+				setEditedData(parsedData);
+				
+				// Set default collapsed paths for level 2 and deeper
+				const defaultCollapsed = createDefaultCollapsedPaths(parsedData);
+				setCollapsedPaths(defaultCollapsed);
+			} catch (e) {
+				console.error('JsonEditor: Error loading data', e);
+				setLoadError('Failed to load JSON data');
 			}
+		} else {
+			setJsonData(null);
+			setEditedData(null);
 		}
+	}, [selectedRequest, shouldLoadData]);
+
+	const handleEditToggle = () => {
+		setIsEditing(!isEditing);
 	};
 
-	// Handle tab key for proper indentation
-	const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === 'Tab') {
-			e.preventDefault();
-			const textarea = e.currentTarget;
-			const start = textarea.selectionStart;
-			const end = textarea.selectionEnd;
-
-			if (e.shiftKey) {
-				const beforeSelection = editorValue.substring(0, start);
-				const afterSelection = editorValue.substring(end);
-				const lines = beforeSelection.split('\n');
-				const currentLineStart = beforeSelection.lastIndexOf('\n') + 1;
-				const currentLine = lines[lines.length - 1];
-
-				if (currentLine.startsWith('\t')) {
-					const newValue = beforeSelection.substring(0, currentLineStart) + currentLine.substring(1) + afterSelection;
-					setEditorValue(newValue);
-					setHasChanges(true);
-					setTimeout(() => {
-						textarea.selectionStart = start - 1;
-						textarea.selectionEnd = end - 1;
-					}, 0);
-				}
-			} else {
-				const newValue = editorValue.substring(0, start) + '\t' + editorValue.substring(end);
-				setEditorValue(newValue);
-				setHasChanges(true);
-				validateJson(newValue);
-				setTimeout(() => {
-					textarea.selectionStart = start + 1;
-					textarea.selectionEnd = start + 1;
-				}, 0);
-			}
-		}
+	const handleJsonChange = (newValue: any) => {
+		setEditedData(newValue);
+		setHasChanges(JSON.stringify(newValue) !== JSON.stringify(jsonData));
+		setParseError(null);
 	};
 
 	const handleSave = async () => {
-		if (!selectedRequest || !isValidJson || !hasChanges) return;
+		if (!selectedRequest || !hasChanges) return;
 		setIsSaving(true);
 		try {
-			const data = JSON.parse(editorValue);
-			await onSaveOverride(selectedRequest.id, data);
+			await onSaveOverride(selectedRequest.id, editedData);
+			setJsonData(editedData);
 			setHasChanges(false);
+			setParseError(null);
 		} catch (error) {
 			console.error('Failed to save override:', error);
 		} finally {
@@ -141,13 +471,45 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 	};
 
 	const formatJson = () => {
-		if (!isValidJson) return;
 		try {
-			const parsed = JSON.parse(editorValue);
-			const formatted = JSON.stringify(parsed, null, 2);
-			setEditorValue(formatted);
+			// JsonView handles formatting automatically, but we can reset to original formatted state
+			setEditedData({ ...editedData });
+			setParseError(null);
+		} catch (e) {
+			setParseError('Cannot format: Data is not valid JSON.');
+		}
+	};
+
+	const handleRefreshAndCheckOverrides = async () => {
+		if (!selectedRequest) return;
+
+		try {
+			// Check for DevTools network overrides
+			const response = await chrome.runtime.sendMessage({ 
+				type: 'CHECK_OVERRIDE_STATUS', 
+				url: selectedRequest.url 
+			});
+
+			if (response.success) {
+				console.log('🔍 Override status check result:', response.data);
+				
+				// Refresh the request data from background
+				const refreshResponse = await chrome.runtime.sendMessage({ type: 'GET_REQUESTS' });
+				const requests = Object.values(refreshResponse || {}) as CapturedRequest[];
+				const updatedRequest = requests.find(r => r.id === selectedRequest.id);
+				
+				if (updatedRequest && onRequestUpdate) {
+					// Update the selected request if it has been modified
+					onRequestUpdate(updatedRequest);
+				}
+			}
+
+			// Also format the JSON
+			formatJson();
 		} catch (error) {
-			console.error('Failed to format JSON:', error);
+			console.error('Failed to check override status:', error);
+			// Fallback to just formatting
+			formatJson();
 		}
 	};
 
@@ -203,63 +565,188 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 				</div>
 
 				{/* Status Messages */}
-				{!isValidJson && (
+				{loadError && (
 					<div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
 						<AlertTriangle style={{ color: '#ef4444', marginRight: '8px' }} size={16} />
 						<span style={{ fontSize: '14px', color: '#991b1b' }}>
-							<strong>Invalid JSON:</strong> {jsonError}
+							{loadError}
 						</span>
 					</div>
 				)}
 
-				{hasChanges && isValidJson && (
+				{hasChanges && (
 					<div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
 						<CheckCircle style={{ color: '#22c55e', marginRight: '8px' }} size={16} />
 						<span style={{ fontSize: '14px', color: '#166534' }}>Ready to save your changes</span>
 					</div>
 				)}
+
+				{parseError && (
+					<div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
+						<AlertTriangle style={{ color: '#ef4444', marginRight: '8px' }} size={16} />
+						<span style={{ fontSize: '14px', color: '#991b1b' }}>
+							{parseError}
+						</span>
+					</div>
+				)}
 			</div>
 
-			{/* Editor Area */}
-			<div style={{ position: 'relative', flex: 1, padding: '16px', paddingRight: '16px' }}>
+			{/* JSON Viewer/Editor Area */}
+			<div style={{ position: 'relative', flex: 1, padding: '16px' }}>
 				<div style={{ position: 'absolute', inset: '16px 16px 72px 16px' }}>
-					{/* Scrollable container */}
-					<div style={{ width: '100%', height: '100%', border: '2px solid #d1d5db', borderRadius: '12px', overflow: 'auto', backgroundColor: '#ffffff', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}>
-						{useJsonView && jsonObject ? (
-							<div style={{ padding: '16px' }}>
-								<JsonView value={jsonObject} enableClipboard={false} displayDataTypes={false} displayObjectSize={false} style={{ backgroundColor: '#ffffff', fontSize: '14px', fontFamily: 'Monaco, Consolas, "Courier New", monospace' }} />
+					<div style={{ width: '100%', height: '100%', border: '2px solid #d1d5db', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#ffffff', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', display: 'flex', flexDirection: 'column' }}>
+						{shouldLoadData && jsonData !== null ? (
+							<div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+								{isEditing ? (
+									<div style={{ position: 'relative' }}>
+										{/* Editable JSON overlay */}
+										<div
+											contentEditable
+											suppressContentEditableWarning
+											onInput={(e) => {
+												try {
+													const text = e.currentTarget.textContent || '';
+													const parsed = JSON.parse(text);
+													handleJsonChange(parsed);
+													setParseError(null);
+												} catch (error) {
+													setParseError('Invalid JSON format');
+												}
+											}}
+											style={{
+												width: '100%',
+												minHeight: '400px',
+												padding: '16px',
+												border: '2px solid #3b82f6',
+												borderRadius: '8px',
+												fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+												fontSize: '14px',
+												lineHeight: '1.6',
+												backgroundColor: '#f8fafc',
+												color: '#1e293b',
+												outline: 'none',
+												whiteSpace: 'pre-wrap',
+												overflowWrap: 'break-word',
+											}}
+											dangerouslySetInnerHTML={{
+												__html: JSON.stringify(editedData, null, 2)
+													.replace(/&/g, '&amp;')
+													.replace(/</g, '&lt;')
+													.replace(/>/g, '&gt;')
+													.replace(/"/g, '&quot;')
+													.replace(/'/g, '&#39;')
+											}}
+										/>
+										{parseError && (
+											<div style={{
+												marginTop: '8px',
+												padding: '8px 12px',
+												backgroundColor: '#fef2f2',
+												border: '1px solid #fecaca',
+												borderRadius: '6px',
+												color: '#dc2626',
+												fontSize: '14px',
+												display: 'flex',
+												alignItems: 'center'
+											}}>
+												<AlertTriangle size={16} style={{ marginRight: '8px' }} />
+												{parseError}
+											</div>
+										)}
+									</div>
+								) : (
+									<div style={{ 
+										fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+										fontSize: '14px',
+										lineHeight: '1.5',
+										backgroundColor: '#ffffff',
+										border: '1px solid #e5e7eb',
+										borderRadius: '8px',
+										padding: '16px',
+									}}>
+										{/* Custom inline editable JSON tree */}
+										<div style={{ marginBottom: '4px', fontWeight: 'bold', color: '#374151' }}>
+											{'{'}
+										</div>
+										{Object.entries(editedData).map(([key, value], index, array) => (
+											<JsonEditorLine
+												key={key}
+												value={value}
+												keyName={key}
+												path={[key]}
+												depth={1}
+												isLast={index === array.length - 1}
+												onEdit={handleInlineEdit}
+												onDelete={handleDelete}
+												collapsed={collapsedPaths.has(key)}
+												collapsedPaths={collapsedPaths}
+												onToggleCollapse={handleToggleCollapse}
+											/>
+										))}
+										<div style={{ fontWeight: 'bold', color: '#374151' }}>
+											{'}'}
+										</div>
+									</div>
+								)}
+							</div>
+						) : shouldLoadData ? (
+							<div style={{ padding: '16px', color: '#6b7280', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+								No response data available
 							</div>
 						) : (
-							<textarea
-								ref={textareaRef}
-								value={editorValue}
-								onChange={(e) => handleEditorChange(e.target.value)}
-								onKeyDown={handleKeyDown}
-								placeholder='JSON data will appear here...'
-								spellCheck={false}
-								style={{ width: '100%', height: '100%', padding: '16px', border: 'none', outline: 'none', fontFamily: 'Monaco, Consolas, "Courier New", monospace', fontSize: '14px', lineHeight: '1.6', resize: 'none', backgroundColor: '#ffffff' }}
-								onFocus={(e) => {
-									(e.currentTarget.parentElement as HTMLElement).style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.1)';
-									(e.currentTarget.parentElement as HTMLElement).style.borderColor = '#3b82f6';
-								}}
-								onBlur={(e) => {
-									(e.currentTarget.parentElement as HTMLElement).style.boxShadow = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
-									(e.currentTarget.parentElement as HTMLElement).style.borderColor = '#d1d5db';
-								}}
-							/>
+							<div style={{ padding: '16px', color: '#6b7280', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+								Click on a request in the sidebar to load and view its JSON response
+							</div>
 						)}
 					</div>
 				</div>
 
-				{/* Bottom Action Bar - pinned bottom-left */}
+				{/* Bottom Action Bar */}
 				<div style={{ position: 'absolute', left: '16px', bottom: '16px', display: 'flex', justifyContent: 'flex-start', gap: '12px', height: '40px' }}>
-					{/* Save Button (left-aligned and first) */}
+					{/* Edit/Done Button */}
+					<button
+						onClick={handleEditToggle}
+						disabled={!jsonData}
+						style={{ 
+							padding: '8px 16px', 
+							backgroundColor: isEditing ? '#059669' : '#6366f1', 
+							color: 'white', 
+							fontWeight: '600', 
+							borderRadius: '8px', 
+							border: 'none', 
+							cursor: jsonData ? 'pointer' : 'not-allowed', 
+							display: 'flex', 
+							alignItems: 'center', 
+							justifyContent: 'center', 
+							boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', 
+							transition: 'all 0.2s', 
+							height: '40px',
+							opacity: jsonData ? 1 : 0.5
+						}}
+					>
+						<Edit3 size={16} style={{ marginRight: '8px' }} />
+						{isEditing ? 'Done' : 'Edit'}
+					</button>
+
+					{/* Save Button */}
 					<button
 						onClick={handleSave}
-						disabled={!hasChanges || !isValidJson || isSaving}
-						style={{ padding: '8px 16px', backgroundColor: hasChanges && isValidJson && !isSaving ? '#2563eb' : '#9ca3af', color: 'white', fontWeight: '600', borderRadius: '8px', border: 'none', cursor: hasChanges && isValidJson && !isSaving ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', transition: 'all 0.2s', height: '40px' }}
-						onMouseEnter={(e) => { if (hasChanges && isValidJson && !isSaving) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#1d4ed8'; }}
-						onMouseLeave={(e) => { if (hasChanges && isValidJson && !isSaving) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#2563eb'; }}
+						disabled={!hasChanges || isSaving || !!parseError}
+						style={{ 
+							padding: '8px 16px', 
+							backgroundColor: hasChanges && !isSaving && !parseError ? '#2563eb' : '#9ca3af', 
+							color: 'white', 
+							fontWeight: '600', 
+							borderRadius: '8px', 
+							border: 'none', 
+							cursor: hasChanges && !isSaving && !parseError ? 'pointer' : 'not-allowed', 
+							display: 'flex', 
+							alignItems: 'center', 
+							justifyContent: 'center', 
+							boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', 
+							transition: 'all 0.2s', 
+							height: '40px' 
+						}}
 					>
 						{isSaving ? (
 							<>
@@ -269,39 +756,51 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 						) : (
 							<>
 								<Save size={16} style={{ marginRight: '8px' }} />
-								Save
+								Save & Override
 							</>
 						)}
 					</button>
 
-					{/* View Toggle */}
-					<button
-						onClick={() => setUseJsonView(!useJsonView)}
-						style={{ padding: '8px 16px', fontSize: '14px', fontWeight: '500', color: '#2563eb', backgroundColor: useJsonView ? '#eff6ff' : '#f9fafb', border: `1px solid ${useJsonView ? '#3b82f6' : '#d1d5db'}`, borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', height: '40px' }}
-						onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = useJsonView ? '#dbeafe' : '#f3f4f6'; }}
-						onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = useJsonView ? '#eff6ff' : '#f9fafb'; }}
-					>
-						{useJsonView ? '📝 Edit' : '🌳 View'}
-					</button>
-
-					{/* Format Button */}
-					<button
-						onClick={formatJson}
-						disabled={!isValidJson}
-						style={{ padding: '8px 16px', fontSize: '14px', fontWeight: '500', color: isValidJson ? '#374151' : '#9ca3af', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '8px', cursor: isValidJson ? 'pointer' : 'not-allowed', opacity: isValidJson ? 1 : 0.5, transition: 'all 0.2s', height: '40px' }}
-						onMouseEnter={(e) => { if (isValidJson) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#f9fafb'; }}
-						onMouseLeave={(e) => { if (isValidJson) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ffffff'; }}
-					>
-						Format
-					</button>
+					{/* Format Button - Only show in edit mode if needed */}
+					{isEditing && (
+						<button
+							onClick={handleRefreshAndCheckOverrides}
+							style={{ 
+								padding: '8px 16px', 
+								fontSize: '14px', 
+								fontWeight: '500', 
+								color: '#374151', 
+								backgroundColor: '#ffffff', 
+								border: '1px solid #d1d5db', 
+								borderRadius: '8px', 
+								cursor: 'pointer', 
+								transition: 'all 0.2s', 
+								height: '40px' 
+							}}
+						>
+							Refresh
+						</button>
+					)}
 
 					{/* Clear Override */}
 					{selectedRequest?.isOverridden && (
 						<button
 							onClick={handleClearOverride}
-							style={{ padding: '8px 16px', fontSize: '14px', fontWeight: '500', color: '#c2410c', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40px' }}
-							onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ffedd5'; }}
-							onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#fff7ed'; }}
+							style={{ 
+								padding: '8px 16px', 
+								fontSize: '14px', 
+								fontWeight: '500', 
+								color: '#c2410c', 
+								backgroundColor: '#fff7ed', 
+								border: '1px solid #fed7aa', 
+								borderRadius: '8px', 
+								cursor: 'pointer', 
+								transition: 'all 0.2s', 
+								display: 'flex', 
+								alignItems: 'center', 
+								justifyContent: 'center', 
+								height: '40px' 
+							}}
 						>
 							<RotateCcw size={16} style={{ marginRight: '8px' }} />
 							Reset
