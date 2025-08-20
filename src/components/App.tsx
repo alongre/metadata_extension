@@ -40,7 +40,11 @@ const App: React.FC = () => {
 			const response = await chrome.runtime.sendMessage({ type: 'GET_REQUESTS' });
 			const requestsArray = (Object.values(response || {}) as CapturedRequest[])
 				.filter((r) => r.responseData !== undefined)
-				.sort((a, b) => b.timestamp - a.timestamp);
+				.sort((a, b) => {
+					const aMod = (a.overrideUpdatedAt ?? a.completedAt ?? a.timestamp);
+					const bMod = (b.overrideUpdatedAt ?? b.completedAt ?? b.timestamp);
+					return bMod - aMod;
+				});
 			setRequests(requestsArray);
 			// If the current selection has no response or was removed, clear it
 			if (selectedRequest && !requestsArray.find((r) => r.id === selectedRequest.id)) {

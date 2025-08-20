@@ -22,6 +22,7 @@ interface CapturedRequest {
 	isOverridden: boolean;
 	completed?: boolean;
 	completedAt?: number;
+	overrideUpdatedAt?: number;
 }
 
 interface StoredRequests {
@@ -34,6 +35,10 @@ interface URLPattern {
 	enabled: boolean;
 	createdAt: number;
 }
+
+// Keys for persisted override state
+const ACTIVE_OVERRIDES_KEY = 'activeOverrides'; // Record<string /* urlKey */ , any /* payload */>
+const OVERRIDE_RULE_IDS_KEY = 'overrideRuleIds'; // Record<string /* urlKey */ , number /* ruleId */>
 
 // Storage helper functions
 async function getStoredRequests(): Promise<StoredRequests> {
@@ -149,6 +154,140 @@ async function isTargetEndpoint(url: string): Promise<{ isMatch: boolean; matche
 // Debug logging function
 function debugLog(message: string, data?: any) {
 	console.log(`[Metadata Wizard] ${message}`, data || '');
+}
+
+// ===============================
+// Override + DNR helper functions
+// ===============================
+
+// Normalize a URL to a stable key (origin + pathname, ignore query/hash)
+function normalizeUrlKey(url: string): string {
+	try {
+		const u = new URL(url);
+		return `${u.origin}${u.pathname}`;
+	} catch {
+		return url.split('?')[0].split('#')[0];
+	}
+}
+
+// Build a regex that matches the same origin+pathname regardless of query
+function buildRegexFilterForUrl(url: string): string {
+	try {
+		const u = new URL(url);
+		const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const origin = escape(u.origin);
+		const path = escape(u.pathname);
+		return `^${origin}${path}(\\?.*)?$`;
+	} catch {
+		const base = url.split('?')[0];
+		const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		return `^${escape(base)}(\\?.*)?$`;
+	}
+}
+
+// UTF-8 safe base64 encoder
+function toBase64(str: string): string {
+	try {
+		// btoa handles ASCII; encodeURIComponent handles UTF-8
+		return btoa(unescape(encodeURIComponent(str)));
+	} catch {
+		// As a fallback, strip non-ASCII (rare)
+		return btoa(str);
+	}
+}
+
+function toDataUrl(payload: any): string {
+	const text = typeof payload === 'string' ? payload : JSON.stringify(payload);
+	const b64 = toBase64(text);
+	return `data:application/json;base64,${b64}`;
+}
+
+async function getActiveOverrides(): Promise<Record<string, any>> {
+	const res = await chrome.storage.local.get(ACTIVE_OVERRIDES_KEY);
+	return res[ACTIVE_OVERRIDES_KEY] || {};
+}
+
+async function setActiveOverrides(map: Record<string, any>): Promise<void> {
+	await chrome.storage.local.set({ [ACTIVE_OVERRIDES_KEY]: map });
+}
+
+async function getOverrideRuleIds(): Promise<Record<string, number>> {
+	const res = await chrome.storage.local.get(OVERRIDE_RULE_IDS_KEY);
+	return res[OVERRIDE_RULE_IDS_KEY] || {};
+}
+
+async function setOverrideRuleIds(map: Record<string, number>): Promise<void> {
+	await chrome.storage.local.set({ [OVERRIDE_RULE_IDS_KEY]: map });
+}
+
+// Deterministic rule id from key; kept within a safe numeric range
+function ruleIdFromKey(key: string): number {
+	let hash = 0;
+	for (let i = 0; i < key.length; i++) {
+		hash = (hash * 31 + key.charCodeAt(i)) | 0;
+	}
+	// Keep positive and within 1..2^31-1 range
+	const id = Math.abs(hash) % 2000000000 || 1;
+	return id;
+}
+
+async function applyOverrideRule(url: string, payload: any): Promise<number> {
+	const urlKey = normalizeUrlKey(url);
+	const id = ruleIdFromKey(urlKey);
+	const regexFilter = buildRegexFilterForUrl(url);
+	const redirectUrl = toDataUrl(payload);
+
+	const rule: chrome.declarativeNetRequest.Rule = {
+		id,
+		priority: 1,
+		action: {
+			type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
+			redirect: { url: redirectUrl },
+		},
+		condition: {
+			regexFilter,
+			resourceTypes: [
+				chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST,
+				chrome.declarativeNetRequest.ResourceType.SUB_FRAME,
+				chrome.declarativeNetRequest.ResourceType.MAIN_FRAME,
+				chrome.declarativeNetRequest.ResourceType.OTHER,
+			],
+		},
+	};
+
+	await chrome.declarativeNetRequest.updateDynamicRules({
+		removeRuleIds: [id],
+		addRules: [rule],
+	});
+
+	// Persist maps
+	const active = await getActiveOverrides();
+	active[urlKey] = payload;
+	await setActiveOverrides(active);
+
+	const ids = await getOverrideRuleIds();
+	ids[urlKey] = id;
+	await setOverrideRuleIds(ids);
+
+	debugLog(`🧩 Applied DNR override`, { urlKey, id, regexFilter, size: typeof payload === 'string' ? payload.length : undefined });
+	return id;
+}
+
+async function removeOverrideRuleByUrl(url: string): Promise<void> {
+	const urlKey = normalizeUrlKey(url);
+	const ids = await getOverrideRuleIds();
+	const id = ids[urlKey];
+	if (id) {
+		await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [id], addRules: [] });
+		delete ids[urlKey];
+		await setOverrideRuleIds(ids);
+	}
+	const active = await getActiveOverrides();
+	if (urlKey in active) {
+		delete active[urlKey];
+		await setActiveOverrides(active);
+	}
+	debugLog(`🧹 Removed DNR override`, { urlKey, id });
 }
 
 // Tab tracking functions
@@ -375,7 +514,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 					if (stored[message.requestId]) {
 						stored[message.requestId].overrideData = message.data;
 						stored[message.requestId].isOverridden = true;
+						stored[message.requestId].overrideUpdatedAt = Date.now();
 						await storeRequest(stored[message.requestId]);
+						// Apply a persistent DNR redirect for this URL
+						try {
+							await applyOverrideRule(stored[message.requestId].url, message.data);
+						} catch (e) {
+							debugLog(`❌ Failed to apply DNR override: ${e}`);
+						}
 						debugLog(`💾 Saved override for: ${stored[message.requestId].endpoint}`);
 						sendResponse({ success: true });
 					} else {
@@ -397,7 +543,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 					if (stored[message.requestId]) {
 						delete stored[message.requestId].overrideData;
 						stored[message.requestId].isOverridden = false;
+						stored[message.requestId].overrideUpdatedAt = Date.now();
 						await storeRequest(stored[message.requestId]);
+						// Remove any DNR override rule for this URL
+						try {
+							await removeOverrideRuleByUrl(stored[message.requestId].url);
+						} catch (e) {
+							debugLog(`❌ Failed to remove DNR override: ${e}`);
+						}
 						debugLog(`🧹 Cleared override for: ${stored[message.requestId].endpoint}`);
 						sendResponse({ success: true });
 					} else {
@@ -407,6 +560,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 				} catch (error) {
 					const errorMsg = error instanceof Error ? error.message : String(error);
 					debugLog(`❌ Error clearing override: ${errorMsg}`);
+					sendResponse({ success: false, error: errorMsg });
+				}
+			})();
+			return true;
+
+		case 'CHECK_OVERRIDE_STATUS':
+			(async () => {
+				try {
+					const url = message.url as string;
+					const key = normalizeUrlKey(url);
+					const active = await getActiveOverrides();
+					const ids = await getOverrideRuleIds();
+					sendResponse({ success: true, data: { active: key in active, ruleId: ids[key] || null } });
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
 					sendResponse({ success: false, error: errorMsg });
 				}
 			})();
@@ -669,6 +837,42 @@ chrome.runtime.onStartup.addListener(() => {
 	debugLog(`🔄 Extension service worker started`);
 	// Initialize active tab tracking on startup
 	updateActiveTab();
+	// Re-apply any persisted DNR override rules
+	(async () => {
+		try {
+			const active = await getActiveOverrides();
+			const entries = Object.entries(active);
+			if (entries.length === 0) return;
+			debugLog(`♻️ Re-applying ${entries.length} override rule(s) at startup`);
+			const addRules: chrome.declarativeNetRequest.Rule[] = entries.map(([key, payload]) => {
+				const id = ruleIdFromKey(key);
+				const regexFilter = buildRegexFilterForUrl(key);
+				return {
+					id,
+					priority: 1,
+					action: { type: chrome.declarativeNetRequest.RuleActionType.REDIRECT, redirect: { url: toDataUrl(payload) } },
+					condition: {
+						regexFilter,
+						resourceTypes: [
+							chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST,
+							chrome.declarativeNetRequest.ResourceType.SUB_FRAME,
+							chrome.declarativeNetRequest.ResourceType.MAIN_FRAME,
+							chrome.declarativeNetRequest.ResourceType.OTHER,
+						],
+					},
+				};
+			});
+			// First remove any rules with those ids to avoid duplicates
+			const removeRuleIds = addRules.map((r) => r.id);
+			await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
+			// Ensure ids map is up to date
+			const ids: Record<string, number> = {};
+			for (const [key] of entries) ids[key] = ruleIdFromKey(key);
+			await setOverrideRuleIds(ids);
+		} catch (e) {
+			debugLog(`❌ Failed to re-apply override rules at startup: ${e}`);
+		}
+	})();
 });
 
 // Test the webRequest API on startup

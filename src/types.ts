@@ -17,6 +17,7 @@ export interface CapturedRequest {
 	isOverridden: boolean;
 	completed?: boolean;
 	completedAt?: number;
+	overrideUpdatedAt?: number; // timestamp when override was last saved
 }
 
 export interface StoredRequests {
@@ -45,7 +46,8 @@ export interface BackgroundMessage {
 		| 'TOGGLE_URL_PATTERN'
 		| 'CLEAR_ALL_REQUESTS'
 		| 'PATTERNS_UPDATED'
-		| 'EDIT_URL_PATTERN';
+		| 'EDIT_URL_PATTERN'
+		| 'CHECK_OVERRIDE_STATUS';
 	requestId?: string;
 	data?: any;
 	url?: string; // Added for RESPONSE_CAPTURED

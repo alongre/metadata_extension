@@ -26,6 +26,13 @@ const Sidebar: React.FC<SidebarProps> = ({
 		return date.toLocaleTimeString();
 	};
 
+	// Sort by last modified: overrideUpdatedAt > completedAt > timestamp (desc)
+	const sorted = [...requests].sort((a, b) => {
+		const aMod = a.overrideUpdatedAt ?? a.completedAt ?? a.timestamp;
+		const bMod = b.overrideUpdatedAt ?? b.completedAt ?? b.timestamp;
+		return bMod - aMod;
+	});
+
 	return (
 		<div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 			{/* Header */}
@@ -156,7 +163,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 					</div>
 				) : (
 					<div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-						{requests.map((request) => (
+						{sorted.map((request) => (
 							<div
 								key={request.id}
 								style={{
@@ -214,19 +221,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 													Modified
 												</span>
 											)}
-											{request.responseData !== undefined && (
-												<span
-													style={{
-														backgroundColor: '#dcfce7',
-														color: '#166534',
-														fontSize: '12px',
-														padding: '2px 8px',
-														borderRadius: '9999px',
-													}}
-												>
-													✓ Response
-												</span>
-											)}
+											{/* Response label removed as requested */}
 											{request.responseData === undefined && request.completed && (
 												<span
 													style={{
