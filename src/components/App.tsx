@@ -205,6 +205,7 @@ const App: React.FC = () => {
 						selectedRequest={selectedRequest}
 						onSaveOverride={handleSaveOverride}
 						onClearOverride={handleClearOverride}
+						shouldLoadData={true}
 					/>
 				</div>
 			</div>
