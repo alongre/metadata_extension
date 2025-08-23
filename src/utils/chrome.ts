@@ -79,3 +79,16 @@ export async function clearOverride(requestId: string): Promise<boolean> {
 		return false;
 	}
 }
+
+/**
+ * Get active overrides
+ */
+export async function getOverrides(): Promise<string[]> {
+	try {
+		const response = await sendMessageToBackground({ type: 'GET_OVERRIDES' });
+		return response as string[];
+	} catch (error) {
+		console.error('Failed to get overrides:', error);
+		return [];
+	}
+}

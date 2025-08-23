@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CapturedRequest } from '../types';
+import { getOverrides } from '../utils/chrome';
 import Sidebar from './Sidebar';
 import JsonEditor from './JsonEditor';
 import Settings from './Settings';
@@ -10,15 +11,18 @@ const App: React.FC = () => {
 	const [sidebarWidth, setSidebarWidth] = useState(250);
 	const [isResizing, setIsResizing] = useState(false);
 	const [showSettings, setShowSettings] = useState(false);
+	const [overriddenUrls, setOverriddenUrls] = useState<string[]>([]);
 
 	useEffect(() => {
 		loadRequests();
+		loadOverrides();
 
 		// Listen for real-time request updates from background script
 		const messageListener = (message: any) => {
 			if (message.type === 'REQUEST_COMPLETED') {
 				console.log('🔄 New request completed, refreshing list:', message.request.endpoint);
 				loadRequests(); // Refresh the list when new requests come in
+				loadOverrides();
 			}
 		};
 
@@ -27,6 +31,7 @@ const App: React.FC = () => {
 		// Set up auto-refresh every 5 seconds to catch any missed updates
 		const autoRefreshInterval = setInterval(() => {
 			loadRequests();
+			loadOverrides();
 		}, 5000);
 
 		return () => {
@@ -34,6 +39,11 @@ const App: React.FC = () => {
 			clearInterval(autoRefreshInterval);
 		};
 	}, []);
+
+	const loadOverrides = async () => {
+		const overrides = await getOverrides();
+		setOverriddenUrls(overrides);
+	};
 
 	const loadRequests = async () => {
 		try {
@@ -56,6 +66,11 @@ const App: React.FC = () => {
 	};
 
 	const handleDeleteRequest = async (requestId: string) => {
+		const requestToClear = requests.find((r) => r.id === requestId);
+		if (requestToClear?.isOverridden) {
+			await handleClearOverride(requestId);
+		}
+
 		try {
 			await chrome.runtime.sendMessage({
 				type: 'DELETE_REQUEST',
@@ -102,6 +117,7 @@ const App: React.FC = () => {
 			setSelectedRequest((prev) =>
 				prev?.id === requestId ? { ...prev, overrideData: undefined, isOverridden: false } : prev
 			);
+			loadOverrides();
 		} catch (error) {
 			console.error('Failed to clear override:', error);
 		}
@@ -153,18 +169,8 @@ const App: React.FC = () => {
 	}, [isResizing]);
 
 	return (
-		<>
+		<div style={{ display: 'flex', height: '600px', width: '800px',backgroundColor: '#f8fafc' }}>
 			<div
-				style={{
-					display: 'flex',
-					height: '600px',
-					width: '800px',
-					backgroundColor: '#f3f4f6',
-					fontFamily: 'system-ui, -apple-system, sans-serif',
-				}}
-			>
-				{/* Sidebar */}
-				<div
 					style={{
 						width: `${sidebarWidth}px`,
 						backgroundColor: 'white',
@@ -172,35 +178,44 @@ const App: React.FC = () => {
 						flexShrink: 0,
 					}}
 				>
-					<Sidebar
-						requests={requests}
-						selectedRequest={selectedRequest}
-						onSelectRequest={setSelectedRequest}
-						onDeleteRequest={handleDeleteRequest}
-						onRefresh={loadRequests}
-						onOpenSettings={() => setShowSettings(true)}
-						onClearAll={handleClearAll}
-					/>
-				</div>
-
-				{/* Resizer */}
-				<div
-					style={{
-						width: '4px',
-						backgroundColor: '#d1d5db',
-						cursor: 'col-resize',
-						transition: 'background-color 0.2s',
-						flexShrink: 0,
-					}}
-					onMouseDown={handleMouseDown}
-					onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#3b82f6')}
-					onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#d1d5db')}
-				/>
-
+			<Sidebar
+				
+				requests={requests}
+				selectedRequest={selectedRequest}
+				onSelectRequest={setSelectedRequest}
+				onDeleteRequest={handleDeleteRequest}
+				onRefresh={() => {
+					loadRequests();
+					loadOverrides();
+				}}
+				onOpenSettings={() => setShowSettings(true)}
+				onClearAll={handleClearAll}
+				overriddenUrls={overriddenUrls}
+			/>
+			</div>
+			{/* Resizer */}
+			<div
+				style={{
+					width: '4px',
+					backgroundColor: isResizing ? '#3b82f6' : '#d1d5db',
+					cursor: 'col-resize',
+					transition: 'background-color 0.2s',
+					flexShrink: 0,
+				}}
+				onMouseDown={handleMouseDown}
+			/>
+			<div
+				style={{
+					flex: 1,
+					display: 'flex',
+					flexDirection: 'column',
+					minWidth: 0, // Prevent flex item from growing beyond its container
+				}}
+			>
 				{/* JSON Editor */}
 				<div
 					style={{
-						width: `${800 - sidebarWidth - 4}px`,
+						flex: 1,
 						backgroundColor: 'white',
 						overflow: 'hidden',
 					}}
@@ -216,7 +231,7 @@ const App: React.FC = () => {
 
 			{/* Settings Modal */}
 			{showSettings && <Settings onClose={() => setShowSettings(false)} />}
-		</>
+		</div>
 	);
 };
 

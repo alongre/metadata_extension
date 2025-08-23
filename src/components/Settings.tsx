@@ -10,19 +10,19 @@ import {
 	Check,
 	X as CancelIcon,
 } from 'lucide-react';
-import { URLPattern } from '../types';
+import { WizardURLPattern } from '../types';
 
 interface SettingsProps {
 	onClose: () => void;
 }
 
 const Settings: React.FC<SettingsProps> = ({ onClose }) => {
-	const [patterns, setPatterns] = useState<URLPattern[]>([]);
+	const [patterns, setPatterns] = useState<WizardURLPattern[]>([]);
 	const [newPattern, setNewPattern] = useState('');
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
-	const [editingPattern, setEditingPattern] = useState<string | null>(null);
-	const [editValue, setEditValue] = useState('');
+	const [editingPatternId, setEditingPatternId] = useState<string | null>(null);
+	const [editingPatternValue, setEditingPatternValue] = useState('');
 
 	useEffect(() => {
 		loadPatterns();
@@ -111,37 +111,37 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
 		}
 	};
 
-	const handleEditPattern = (pattern: URLPattern) => {
-		setEditingPattern(pattern.id);
-		setEditValue(pattern.pattern);
-	};
-
-	const handleSaveEdit = async () => {
-		if (!editingPattern || !editValue.trim()) return;
+	const handleEditPattern = (pattern: WizardURLPattern) => {
+		setEditingPatternId(pattern.id);
+		setEditingPatternValue(pattern.pattern);
+	};	const handleSaveEdit = async () => {
+		if (!editingPatternId || !editingPatternValue.trim()) return;
 
 		try {
-			const response = await chrome.runtime.sendMessage({
+			setIsSaving(true);
+			await chrome.runtime.sendMessage({
 				type: 'EDIT_URL_PATTERN',
-				patternId: editingPattern,
-				pattern: editValue.trim(),
+				patternId: editingPatternId,
+				pattern: editingPatternValue.trim(),
+				enabled: patterns.find((p) => p.id === editingPatternId)?.enabled ?? true,
 			});
-
-			if (response.success) {
-				setPatterns((prev) => prev.map((p) => (p.id === editingPattern ? { ...p, pattern: editValue.trim() } : p)));
-				setEditingPattern(null);
-				setEditValue('');
-			} else {
-				alert('Failed to edit pattern: ' + (response.error || 'Unknown error'));
-			}
+			// Update local state
+			setPatterns((prev) =>
+				prev.map((p) => (p.id === editingPatternId ? { ...p, pattern: editingPatternValue.trim() } : p))
+			);
+			setEditingPatternId(null);
+			setEditingPatternValue('');
 		} catch (error) {
-			console.error('Error editing pattern:', error);
-			alert('Error editing pattern. See console for details.');
+			console.error('Failed to save pattern:', error);
+			alert('Failed to save pattern');
+		} finally {
+			setIsSaving(false);
 		}
 	};
 
 	const handleCancelEdit = () => {
-		setEditingPattern(null);
-		setEditValue('');
+		setEditingPatternId(null);
+		setEditingPatternValue('');
 	};
 
 	const handleEditKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -408,11 +408,11 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
 										}}
 									>
 										<div style={{ flex: 1 }}>
-											{editingPattern === pattern.id ? (
+											{editingPatternId === pattern.id ? (
 												<input
 													type='text'
-													value={editValue}
-													onChange={(e) => setEditValue(e.target.value)}
+													value={editingPatternValue}
+													onChange={(e) => setEditingPatternValue(e.target.value)}
 													onKeyDown={handleEditKeyPress}
 													autoFocus
 													style={{
@@ -453,27 +453,27 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
 											)}
 										</div>
 
-										{editingPattern === pattern.id ? (
+										{editingPatternId === pattern.id ? (
 											<>
 												<button
 													onClick={handleSaveEdit}
-													disabled={!editValue.trim()}
+													disabled={!editingPatternValue.trim()}
 													style={{
 														padding: '8px',
-														backgroundColor: !editValue.trim() ? '#e5e7eb' : '#22c55e',
-														color: !editValue.trim() ? '#9ca3af' : 'white',
+														backgroundColor: !editingPatternValue.trim() ? '#e5e7eb' : '#22c55e',
+														color: !editingPatternValue.trim() ? '#9ca3af' : 'white',
 														border: 'none',
 														borderRadius: '6px',
-														cursor: !editValue.trim() ? 'not-allowed' : 'pointer',
+														cursor: !editingPatternValue.trim() ? 'not-allowed' : 'pointer',
 														transition: 'all 0.2s',
 													}}
 													onMouseEnter={(e) => {
-														if (editValue.trim()) {
+														if (editingPatternValue.trim()) {
 															e.currentTarget.style.backgroundColor = '#16a34a';
 														}
 													}}
 													onMouseLeave={(e) => {
-														if (editValue.trim()) {
+														if (editingPatternValue.trim()) {
 															e.currentTarget.style.backgroundColor = '#22c55e';
 														}
 													}}

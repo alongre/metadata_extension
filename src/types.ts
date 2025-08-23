@@ -24,40 +24,31 @@ export interface StoredRequests {
 	[key: string]: CapturedRequest;
 }
 
-export interface URLPattern {
+export interface WizardURLPattern {
 	id: string;
 	pattern: string;
 	enabled: boolean;
 	createdAt: number;
 }
 
-export interface BackgroundMessage {
-	type:
-		| 'GET_REQUESTS'
-		| 'DELETE_REQUEST'
-		| 'SAVE_OVERRIDE'
-		| 'CLEAR_OVERRIDE'
-		| 'RESPONSE_CAPTURED'
-		| 'REQUEST_COMPLETED'
-		| 'DEBUG_INFO'
-		| 'GET_URL_PATTERNS'
-		| 'ADD_URL_PATTERN'
-		| 'DELETE_URL_PATTERN'
-		| 'TOGGLE_URL_PATTERN'
-		| 'CLEAR_ALL_REQUESTS'
-		| 'PATTERNS_UPDATED'
-		| 'EDIT_URL_PATTERN'
-		| 'CHECK_OVERRIDE_STATUS';
-	requestId?: string;
-	data?: any;
-	url?: string; // Added for RESPONSE_CAPTURED
-	timestamp?: number; // Added for RESPONSE_CAPTURED
-	request?: CapturedRequest; // Added for REQUEST_COMPLETED
-	// URL Pattern management
-	patternId?: string;
-	pattern?: string;
-	enabled?: boolean;
-}
+export type BackgroundMessage =
+	| { type: 'GET_REQUESTS' }
+	| { type: 'GET_OVERRIDES' }
+	| { type: 'DELETE_REQUEST'; requestId: string }
+	| { type: 'SAVE_OVERRIDE'; requestId: string; data: any }
+	| { type: 'CLEAR_OVERRIDE'; requestId: string }
+	| { type: 'RESPONSE_CAPTURED'; requestId: string }
+	| { type: 'REQUEST_COMPLETED'; requestId: string; request: CapturedRequest }
+	| { type: 'DEBUG_INFO'; data: any }
+	| { type: 'GET_URL_PATTERNS' }
+	| { type: 'ADD_URL_PATTERN'; pattern: string }
+	| { type: 'UPDATE_URL_PATTERN'; pattern: WizardURLPattern }
+	| { type: 'DELETE_URL_PATTERN'; patternId: string }
+	| { type: 'TOGGLE_URL_PATTERN'; patternId: string; enabled: boolean }
+	| { type: 'CLEAR_ALL_REQUESTS' }
+	| { type: 'PATTERNS_UPDATED' }
+	| { type: 'EDIT_URL_PATTERN'; patternId: string; pattern: string; enabled: boolean }
+	| { type: 'CHECK_OVERRIDE_STATUS'; url: string };
 
 export interface BackgroundResponse {
 	success?: boolean;

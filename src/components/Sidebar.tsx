@@ -10,6 +10,7 @@ interface SidebarProps {
 	onRefresh: () => void;
 	onOpenSettings: () => void;
 	onClearAll: () => void;
+	overriddenUrls: string[];
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -20,6 +21,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 	onRefresh,
 	onOpenSettings,
 	onClearAll,
+	overriddenUrls,
 }) => {
 	const formatTime = (timestamp: number) => {
 		const date = new Date(timestamp);
@@ -120,6 +122,11 @@ const Sidebar: React.FC<SidebarProps> = ({
 					<span>
 						{requests.length} captured request{requests.length !== 1 ? 's' : ''}
 					</span>
+					{overriddenUrls.length > 0 && (
+						<span style={{ color: '#fed7aa', marginLeft: 'auto', paddingRight: '1rem' }}>
+							{overriddenUrls.length} active override{overriddenUrls.length > 1 ? 's' : ''}
+						</span>
+					)}
 					<div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
 						<div
 							style={{
