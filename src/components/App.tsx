@@ -125,6 +125,7 @@ const App: React.FC = () => {
 
 	const handleClearAll = async () => {
 		try {
+			await chrome.runtime.sendMessage({ type: 'CLEAR_ALL_OVERRIDES' });
 			await chrome.runtime.sendMessage({ type: 'CLEAR_ALL_REQUESTS' });
 			setRequests([]);
 			setSelectedRequest(null);

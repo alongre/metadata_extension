@@ -511,6 +511,56 @@ chrome.webRequest.onBeforeRequest.addListener(
 	['requestBody']
 );
 
+/**
+ * Removes all active DNR rules created by this extension and clears
+ * the corresponding override flags and indexes from storage.
+ */
+async function clearAllDnrOverrides() {
+	// 1. Get all currently active DNR rules from Chrome.
+	const allActiveRules = await chrome.declarativeNetRequest.getDynamicRules();
+
+	if (allActiveRules.length === 0) {
+		console.log('No active DNR rules to clear.');
+	} else {
+		// 2. Create a list of all the rule IDs to be removed.
+		const ruleIdsToRemove = allActiveRules.map((rule) => rule.id);
+		console.log(`🧹 Clearing all ${ruleIdsToRemove.length} DNR rules...`);
+
+		// 3. Command Chrome to remove all of them in one go.
+		await chrome.declarativeNetRequest.updateDynamicRules({
+			removeRuleIds: ruleIdsToRemove,
+			addRules: [],
+		});
+	}
+
+	// 4. Wipe your own internal records related to overrides.
+	await chrome.storage.local.set({
+		[ACTIVE_OVERRIDES_KEY]: {},
+		[OVERRIDE_RULE_IDS_KEY]: {},
+	});
+
+	// 5. (Optional but recommended) Reset the override state on all historical requests.
+	// await acquireLock();
+	// try {
+	//     const stored = await getStoredRequests();
+	//     let updated = false;
+	//     for (const requestId in stored) {
+	//         if (stored[requestId].isOverridden) {
+	//             stored[requestId].isOverridden = false;
+	//             stored[requestId].overrideData = undefined;
+	//             updated = true;
+	//         }
+	//     }
+	//     if (updated) {
+	//         await chrome.storage.local.set({ [CAPTURED_REQUESTS_KEY]: stored });
+	//     }
+	// } finally {
+	//     releaseLock();
+	// }
+
+	console.log('✅ All overrides and DNR rules have been cleared.');
+}
+
 // Set up webRequest listeners with enhanced debugging
 
 // chrome.webRequest.onBeforeSendHeaders.addListener(
@@ -792,6 +842,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 				}
 			})();
 			return true;
+		case 'CLEAR_ALL_OVERRIDES':
+			(async () => {
+				try {
+					await clearAllDnrOverrides();
+					sendResponse({ success: true });
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					console.error('Failed to clear all overrides:', errorMsg);
+					sendResponse({ success: false, error: errorMsg });
+				}
+			})();
+			return true; // Keep channel open for async response
 
 		case 'CHECK_OVERRIDE_STATUS':
 			(async () => {
