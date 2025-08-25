@@ -51,8 +51,8 @@ const App: React.FC = () => {
 			const requestsArray = (Object.values(response || {}) as CapturedRequest[])
 				.filter((r) => r.responseData !== undefined)
 				.sort((a, b) => {
-					const aMod = (a.overrideUpdatedAt ?? a.completedAt ?? a.timestamp);
-					const bMod = (b.overrideUpdatedAt ?? b.completedAt ?? b.timestamp);
+					const aMod = a.overrideUpdatedAt ?? a.completedAt ?? a.timestamp;
+					const bMod = b.overrideUpdatedAt ?? b.completedAt ?? b.timestamp;
 					return bMod - aMod;
 				});
 			setRequests(requestsArray);
@@ -169,29 +169,28 @@ const App: React.FC = () => {
 	}, [isResizing]);
 
 	return (
-		<div style={{ display: 'flex', height: '600px', width: '800px',backgroundColor: '#f8fafc' }}>
+		<div style={{ display: 'flex', height: '600px', width: '800px', backgroundColor: '#f8fafc' }}>
 			<div
-					style={{
-						width: `${sidebarWidth}px`,
-						backgroundColor: 'white',
-						boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-						flexShrink: 0,
-					}}
-				>
-			<Sidebar
-				
-				requests={requests}
-				selectedRequest={selectedRequest}
-				onSelectRequest={setSelectedRequest}
-				onDeleteRequest={handleDeleteRequest}
-				onRefresh={() => {
-					loadRequests();
-					loadOverrides();
+				style={{
+					width: `${sidebarWidth}px`,
+					backgroundColor: 'white',
+					boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+					flexShrink: 0,
 				}}
-				onOpenSettings={() => setShowSettings(true)}
-				onClearAll={handleClearAll}
-				overriddenUrls={overriddenUrls}
-			/>
+			>
+				<Sidebar
+					requests={requests}
+					selectedRequest={selectedRequest}
+					onSelectRequest={setSelectedRequest}
+					onDeleteRequest={handleDeleteRequest}
+					onRefresh={() => {
+						loadRequests();
+						loadOverrides();
+					}}
+					onOpenSettings={() => setShowSettings(true)}
+					onClearAll={handleClearAll}
+					overriddenUrls={overriddenUrls}
+				/>
 			</div>
 			{/* Resizer */}
 			<div

@@ -29,9 +29,18 @@ const Sidebar: React.FC<SidebarProps> = ({
 	};
 
 	// Sort by last modified: overrideUpdatedAt > completedAt > timestamp (desc)
+	// if overridden, sort by overrideUpdatedAt
+	// if not overridden, sort by completedAt
+	// if no completedAt, sort by timestamp
 	const sorted = [...requests].sort((a, b) => {
 		const aMod = a.overrideUpdatedAt ?? a.completedAt ?? a.timestamp;
 		const bMod = b.overrideUpdatedAt ?? b.completedAt ?? b.timestamp;
+		if (a.isOverridden && !b.isOverridden) {
+			return -1;
+		}
+		if (!a.isOverridden && b.isOverridden) {
+			return 1;
+		}
 		return bMod - aMod;
 	});
 
