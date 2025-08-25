@@ -32,7 +32,15 @@ if (!fs.existsSync(storePackageDir)) {
 }
 
 // Files to include in the store package
-const requiredFiles = ['manifest.json', 'popup.html', 'popup.js', 'popup.css', 'background.js', 'content.js'];
+const requiredFiles = [
+	'manifest.json',
+	'popup.html',
+	'popup.js',
+	'popup.css',
+	'background.js',
+	'content.js',
+	'content-script.js',
+];
 
 const requiredDirs = ['icons'];
 

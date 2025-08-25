@@ -30,6 +30,28 @@ if (fs.existsSync(manifestSrc)) {
 	console.log('❌ manifest.json not found');
 }
 
+// Copy content-script.js to dist
+const contentScriptSrc = path.join(__dirname, '../src/content-script.js');
+const contentScriptDest = path.join(__dirname, '../dist/content-script.js');
+
+if (fs.existsSync(contentScriptSrc)) {
+	fs.copyFileSync(contentScriptSrc, contentScriptDest);
+	console.log('✅ Copied content-script.js to dist');
+} else {
+	console.log('❌ content-script.js not found');
+}
+
+// Copy pageInterceptor.js to dist
+const pageInterceptorSrc = path.join(__dirname, '../src/pageInterceptor.js');
+const pageInterceptorDest = path.join(__dirname, '../dist/pageInterceptor.js');
+
+if (fs.existsSync(pageInterceptorSrc)) {
+	fs.copyFileSync(pageInterceptorSrc, pageInterceptorDest);
+	console.log('✅ Copied pageInterceptor.js to dist');
+} else {
+	console.log('❌ pageInterceptor.js not found');
+}
+
 // Copy icons to dist
 const iconsDir = path.join(__dirname, '../icons');
 const distIconsDir = path.join(__dirname, '../dist/icons');

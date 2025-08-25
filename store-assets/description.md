@@ -2,18 +2,19 @@
 
 ## Short Description (132 characters max)
 
-Intercept and override REST API responses from /rest/reports-metadata endpoints with a powerful JSON editor interface.
+Intercept and override REST API responses from configurable endpoints with a powerful JSON editor interface.
 
 ## Detailed Description
 
-**Metadata Wizard** is a powerful Chrome extension designed for developers and QA engineers who need to intercept, inspect, and override REST API responses from `/rest/reports-metadata` endpoints.
+**Metadata Wizard** is a powerful Chrome extension designed for developers and QA engineers who need to intercept, inspect, and override REST API responses from configurable endpoints.
 
 ### ✨ Key Features:
 
 🔍 **Smart Request Interception**
 
-- Automatically captures all `/rest/reports-metadata` API calls
+- Configurable URL patterns for flexible endpoint targeting
 - Real-time monitoring with live status indicators
+- Active tab filtering to reduce noise
 - Complete request/response metadata tracking
 
 📝 **Advanced JSON Editor**
@@ -34,7 +35,8 @@ Intercept and override REST API responses from /rest/reports-metadata endpoints 
 
 - Clean, intuitive sidebar with captured requests
 - Resizable panels for optimal workflow
-- Request filtering and organization
+- Configurable URL pattern management
+- Individual request deletion and bulk clearing
 - Responsive design optimized for developer productivity
 
 ### 🛠️ Perfect For:
@@ -53,14 +55,15 @@ Intercept and override REST API responses from /rest/reports-metadata endpoints 
 ### 🎮 How to Use:
 
 1. Install the extension
-2. Navigate to any website using `/rest/reports-metadata` endpoints
-3. Open the extension popup to see captured requests
-4. Click any request to view and edit its JSON response
-5. Save overrides to test different scenarios
-6. Reset when you're done testing
+2. Configure URL patterns in Settings to target your specific endpoints
+3. Navigate to any website using your configured endpoints
+4. Open the extension popup to see captured requests
+5. Click any request to view and edit its JSON response
+6. Save overrides to test different scenarios
+7. Reset when you're done testing
 
 Transform your API development workflow with Metadata Wizard today!
 
 ---
 
-**Developer Note**: This extension specifically targets `/rest/reports-metadata` endpoints and requires appropriate permissions to intercept network requests. Perfect for development and testing environments.
+**Developer Note**: This extension targets configurable API endpoints (default includes `/rest/reports-metadata`) and requires appropriate permissions to intercept network requests. Perfect for development and testing environments.

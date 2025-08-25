@@ -9,44 +9,26 @@
 		"declarativeNetRequestWithHostAccess",
 		"storage",
 		"activeTab",
-		"tabs"
+		"tabs",
+		"scripting"
 	],
 	"host_permissions": ["<all_urls>"],
 	"background": {
-		"service_worker": "background.js",
-		"type": "module"
+		"service_worker": "background.js"
 	},
 	"action": {
-		"default_popup": "popup.html",
-		"default_title": "Metadata Wizard",
-		"default_icon": {
-			"16": "icons/wizard-16.png",
-			"32": "icons/wizard-32.png",
-			"48": "icons/wizard-48.png",
-			"128": "icons/network_wizard_icon_128.png"
-		}
+		"default_popup": "popup.html"
 	},
-	"icons": {
-		"16": "icons/wizard-16.png",
-		"32": "icons/wizard-32.png",
-		"48": "icons/wizard-48.png",
-		"128": "icons/network_wizard_icon_128.png"
-	},
-	"content_security_policy": {
-		"extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; style-src 'self'"
-	},
+
 	"content_scripts": [
 		{
 			"matches": ["<all_urls>"],
-			"js": ["content.js"],
+			"js": ["content-script.js"],
 			"run_at": "document_start",
 			"all_frames": true
 		}
 	],
-	"web_accessible_resources": [
-		{
-			"resources": ["*.js", "*.css", "*.html", "pageInterceptor.js"],
-			"matches": ["<all_urls>"]
-		}
-	]
+	"icons": {
+		"128": "icons/network_wizard_icon_128.png"
+	}
 }

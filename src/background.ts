@@ -4,8 +4,39 @@
  * Intercepts requests in all tabs that match user URL patterns
  */
 
+console.log('SUCCESS: background.js service worker has started!');
+
 // Track the active tab
-let activeTabId: number | null = null;
+let activeTabId: number = 0;
+
+type ResolveFunction = () => void;
+
+const storageLock = {
+	isLocked: false,
+	queue: [] as ResolveFunction[],
+};
+
+function acquireLock(): Promise<void> {
+	return new Promise<void>((resolve) => {
+		if (!storageLock.isLocked) {
+			storageLock.isLocked = true;
+			resolve();
+		} else {
+			storageLock.queue.push(resolve);
+		}
+	});
+}
+
+function releaseLock(): void {
+	if (storageLock.queue.length > 0) {
+		const nextResolve = storageLock.queue.shift();
+		if (nextResolve) {
+			nextResolve();
+		}
+	} else {
+		storageLock.isLocked = false;
+	}
+}
 
 interface CapturedRequest {
 	id: string;
@@ -40,17 +71,61 @@ interface URLPattern {
 const ACTIVE_OVERRIDES_KEY = 'activeOverrides'; // Record<string /* urlKey */ , any /* payload */>
 const OVERRIDE_RULE_IDS_KEY = 'overrideRuleIds'; // Record<string /* urlKey */ , number /* ruleId */>
 
-// Storage helper functions
 async function getStoredRequests(): Promise<StoredRequests> {
-	const result = await chrome.storage.local.get('capturedRequests');
-	return result.capturedRequests || {};
+	return new Promise((resolve, reject) => {
+		chrome.storage.local.get('capturedRequests', (result) => {
+			if (chrome.runtime.lastError) {
+				return reject(chrome.runtime.lastError);
+			}
+			resolve(result.capturedRequests || {});
+		});
+	});
 }
 
-async function storeRequest(request: CapturedRequest): Promise<void> {
-	const stored = await getStoredRequests();
-	stored[request.id] = request;
-	await chrome.storage.local.set({ capturedRequests: stored });
+async function saveRequest(requestId: string, data: any) {
+	if (!requestId) {
+		console.error('❌ saveRequest called with no requestId.');
+		return;
+	}
+	await acquireLock();
+	try {
+		const stored = await getStoredRequests();
+		const existingRequest = stored[requestId];
+
+		if (existingRequest) {
+			// It exists, so we MERGE the new data in.
+			Object.assign(existingRequest, data);
+		} else {
+			// It's a new request, so we ADD it.
+			stored[requestId] = data;
+		}
+
+		// Now, save the entire updated map back to storage
+		await chrome.storage.local.set({ capturedRequests: stored });
+		console.log(`✅ Request ${requestId} saved/updated with:`, data);
+	} catch (error) {
+		console.error(`❌ Failed to save request ${requestId}:`, error);
+	} finally {
+		releaseLock();
+	}
 }
+
+// Storage helper functions
+// async function getStoredRequests(): Promise<StoredRequests> {
+// 	const result = await chrome.storage.local.get('capturedRequests');
+// 	return result.capturedRequests || {};
+// }
+
+// async function storeRequest(request: CapturedRequest): Promise<void> {
+// 	const stored = await getStoredRequests();
+// 	console.log('--------stored requests------', stored);
+// 	if (!stored[request.id]) {
+// 		stored[request.id] = request;
+// 		await chrome.storage.local.set({ capturedRequests: stored });
+// 	} else {
+// 		console.log(`already stored ${request.id}`);
+// 	}
+// }
 
 // URL Pattern storage functions - using chrome.storage.local with separate key
 async function getURLPatterns(): Promise<URLPattern[]> {
@@ -107,8 +182,18 @@ function getDefaultPatterns(): URLPattern[] {
 }
 
 // Generate unique ID for requests
-function generateRequestId(url: string, timestamp: number): string {
-	return `${url.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}`;
+//remove the last / if it exists
+function generateRequestId(url: string): string {
+	const parts = url.split('/').filter((part) => part.length > 0);
+
+	// 2. Take all parts after the domain (i.e., from the 4th part onwards)
+	//    The first three parts are the protocol and the domain.
+	//    Gives: ["rest", "reports-metadata"]
+	const pathParts = parts.slice(3);
+
+	// 3. Join the parts back together with '/' and add the leading slash
+	//    Gives: "/rest/reports-metadata"
+	return '/' + pathParts.join('/');
 }
 
 // Extract endpoint name from URL - get the last segment of the URL path
@@ -134,6 +219,7 @@ function extractEndpointName(url: string): string {
 // Check if URL matches any enabled patterns
 async function isTargetEndpoint(url: string): Promise<{ isMatch: boolean; matchedPattern?: string }> {
 	const patterns = await getURLPatterns();
+	console.log({ patterns });
 	const enabledPatterns = patterns.filter((p) => p.enabled);
 
 	debugLog(
@@ -269,7 +355,12 @@ async function applyOverrideRule(url: string, payload: any): Promise<number> {
 	ids[urlKey] = id;
 	await setOverrideRuleIds(ids);
 
-	debugLog(`🧩 Applied DNR override`, { urlKey, id, regexFilter, size: typeof payload === 'string' ? payload.length : undefined });
+	debugLog(`🧩 Applied DNR override`, {
+		urlKey,
+		id,
+		regexFilter,
+		size: typeof payload === 'string' ? payload.length : undefined,
+	});
 	return id;
 }
 
@@ -295,12 +386,13 @@ async function updateActiveTab() {
 	try {
 		const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
 		if (tabs.length > 0) {
-			activeTabId = tabs[0].id || null;
+			activeTabId = tabs[0].id || 0;
 			debugLog(`📋 Active tab updated: ${activeTabId}`);
+			// addWebRequestListener(activeTabId);
 		}
 	} catch (error) {
 		debugLog(`❌ Error getting active tab: ${error}`);
-		activeTabId = null;
+		activeTabId = 0;
 	}
 }
 
@@ -328,125 +420,185 @@ function decodeRequestBody(body?: chrome.webRequest.WebRequestBody): any | undef
 	return undefined;
 }
 
-// Set up webRequest listeners with enhanced debugging
+let currentListener: (details: chrome.webRequest.WebRequestDetails) => void;
+
+// function addWebRequestListener(tabId: number) {
+// 	// 	// Remove any existing listener
+// 	if (currentListener) {
+// 		chrome.webRequest.onBeforeRequest.removeListener(currentListener);
+// 	}
+
+// 	// Define the new listener
+// 	currentListener = function (details) {
+// 		console.log(`Request made by active tab ${tabId}:`, details);
+// 		// You can modify the request here if needed
+// 		return { cancel: false }; // or {cancel: true} to block
+// 	};
+
+// 	// Add the listener
+// 	chrome.webRequest.onBeforeRequest.addListener(
+// 		(details) => {
+// 			// Process requests from all tabs
+// 			debugLog(`🔍 Checking request: ${details.url}`);
+
+// 			// Handle async pattern matching
+// 			isTargetEndpoint(details.url)
+// 				.then((matchResult) => {
+// 					if (!matchResult.isMatch) {
+// 						return; // Skip non-matching requests silently
+// 					}
+
+// 					debugLog(`✅ Target endpoint detected: ${details.url} (pattern: ${matchResult.matchedPattern})`);
+
+// 					const requestId = generateRequestId(details.url, details.timeStamp);
+// 					const endpoint = extractEndpointName(details.url);
+
+// 					const capturedRequest: CapturedRequest = {
+// 						id: requestId,
+// 						url: details.url,
+// 						endpoint,
+// 						method: details.method,
+// 						timestamp: details.timeStamp,
+// 						isOverridden: false,
+// 						// Attempt to capture request body when present
+// 						requestBody: decodeRequestBody(details.requestBody ?? undefined),
+// 					};
+
+// 					// Store request asynchronously
+// 					storeRequest(capturedRequest)
+// 						.then(() => {
+// 							debugLog(`💾 Stored request: ${endpoint}`, capturedRequest);
+// 						})
+// 						.catch((error) => {
+// 							debugLog(`❌ Failed to store request: ${error.message}`);
+// 						});
+// 				})
+// 				.catch((error) => {
+// 					debugLog(`❌ Error checking endpoint: ${error.message}`);
+// 				});
+// 		},
+// 		{ urls: ['<all_urls>'], tabId },
+// 		['blocking', 'requestBody']
+// 	);
+// }
+
 chrome.webRequest.onBeforeRequest.addListener(
 	(details) => {
-	// Process requests from all tabs
-	debugLog(`🔍 Checking request: ${details.url}`);
+		console.log(`🔍 Checking request: ${details.url}`);
 
-		// Handle async pattern matching
-		isTargetEndpoint(details.url)
-			.then((matchResult) => {
+		// Use an immediately invoked function expression (IIFE) to handle async operations
+		(async () => {
+			try {
+				const matchResult = await isTargetEndpoint(details.url);
 				if (!matchResult.isMatch) {
-					return; // Skip non-matching requests silently
+					return;
 				}
 
-				debugLog(`✅ Target endpoint detected: ${details.url} (pattern: ${matchResult.matchedPattern})`);
-
-				const requestId = generateRequestId(details.url, details.timeStamp);
+				console.log(`✅ Target endpoint detected: ${details.url} (pattern: ${matchResult.matchedPattern})`);
 				const endpoint = extractEndpointName(details.url);
+				const requestId = generateRequestId(details.url);
 
-				const capturedRequest: CapturedRequest = {
+				const capturedRequest = {
 					id: requestId,
 					url: details.url,
 					endpoint,
 					method: details.method,
 					timestamp: details.timeStamp,
 					isOverridden: false,
-					// Attempt to capture request body when present
 					requestBody: decodeRequestBody(details.requestBody ?? undefined),
 				};
 
-				// Store request asynchronously
-				storeRequest(capturedRequest)
-					.then(() => {
-						debugLog(`💾 Stored request: ${endpoint}`, capturedRequest);
-					})
-					.catch((error) => {
-						debugLog(`❌ Failed to store request: ${error.message}`);
-					});
-			})
-			.catch((error) => {
-				debugLog(`❌ Error checking endpoint: ${error.message}`);
-			});
+				await saveRequest(requestId, capturedRequest);
+			} catch (error) {
+				console.error(`❌ Error processing request: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		})();
+
+		// Return an empty object to ensure the listener does not block the request
+		return {};
 	},
 	{ urls: ['<all_urls>'] },
 	['requestBody']
 );
 
-chrome.webRequest.onBeforeSendHeaders.addListener(
-	(details) => {
-		isTargetEndpoint(details.url)
-			.then((matchResult) => {
-				if (!matchResult.isMatch) {
-					return;
-				}
+// Set up webRequest listeners with enhanced debugging
 
-				const requestId = generateRequestId(details.url, details.timeStamp);
+// chrome.webRequest.onBeforeSendHeaders.addListener(
+// 	(details) => {
+// 		isTargetEndpoint(details.url)
+// 			.then((matchResult) => {
+// 				if (!matchResult.isMatch) {
+// 					return;
+// 				}
 
-				// Store headers asynchronously
-				getStoredRequests()
-					.then((stored) => {
-						if (stored[requestId]) {
-							stored[requestId].requestHeaders = details.requestHeaders;
-							storeRequest(stored[requestId])
-								.then(() => {
-									debugLog(`📋 Updated headers for: ${stored[requestId].endpoint}`);
-								})
-								.catch(console.error);
-						}
-					})
-					.catch(console.error);
-			})
-			.catch(console.error);
-	},
-	{ urls: ['<all_urls>'] },
-	['requestHeaders']
-);
+// 				const requestId = generateRequestId(details.url, details.timeStamp);
+
+// 				// Store headers asynchronously
+// 				getStoredRequests()
+// 					.then((stored) => {
+// 						if (stored[requestId]) {
+// 							stored[requestId].requestHeaders = details.requestHeaders;
+// 							storeRequest(stored[requestId])
+// 								.then(() => {
+// 									debugLog(`📋 Updated headers for: ${stored[requestId].endpoint}`);
+// 								})
+// 								.catch(console.error);
+// 						}
+// 					})
+// 					.catch(console.error);
+// 			})
+// 			.catch(console.error);
+// 	},
+// 	{ urls: ['<all_urls>'] },
+// 	['requestHeaders']
+// );
 
 // Enhanced response monitoring
-chrome.webRequest.onResponseStarted.addListener(
-	(details) => {
-		isTargetEndpoint(details.url)
-			.then(async (matchResult) => {
-				if (!matchResult.isMatch) {
-					return;
-				}
+// chrome.webRequest.onResponseStarted.addListener(
+// 	(details) => {
+// 		isTargetEndpoint(details.url)
+// 			.then(async (matchResult) => {
+// 				if (!matchResult.isMatch) {
+// 					return;
+// 				}
 
-				const requestId = generateRequestId(details.url, details.timeStamp);
-				const stored = await getStoredRequests();
+// 				const requestId = generateRequestId(details.url, details.timeStamp);
+// 				const stored = await getStoredRequests();
 
-				if (stored[requestId]) {
-					debugLog(`📡 Response started for: ${stored[requestId].endpoint}`, {
-						status: details.statusCode,
-						responseHeaders: details.responseHeaders?.slice(0, 3), // Log first 3 headers
-					});
+// 				if (stored[requestId]) {
+// 					debugLog(`📡 Response started for: ${stored[requestId].endpoint}`, {
+// 						status: details.statusCode,
+// 						responseHeaders: details.responseHeaders?.slice(0, 3), // Log first 3 headers
+// 					});
 
-					// Store response metadata
-					stored[requestId].responseStatus = details.statusCode;
-					stored[requestId].responseHeaders = details.responseHeaders;
-					await storeRequest(stored[requestId]);
-				}
-			})
-			.catch(console.error);
-	},
-	{ urls: ['<all_urls>'] },
-	['responseHeaders']
-);
+// 					// Store response metadata
+// 					stored[requestId].responseStatus = details.statusCode;
+// 					stored[requestId].responseHeaders = details.responseHeaders;
+// 					await storeRequest(stored[requestId]);
+// 				}
+// 			})
+// 			.catch(console.error);
+// 	},
+// 	{ urls: ['<all_urls>'] },
+// 	['responseHeaders']
+// );
 
 chrome.webRequest.onCompleted.addListener(
 	(details) => {
-		isTargetEndpoint(details.url)
-			.then(async (matchResult) => {
+		return (async () => {
+			try {
+				const matchResult = await isTargetEndpoint(details.url);
 				if (!matchResult.isMatch) {
 					return;
 				}
 
-				const requestId = generateRequestId(details.url, details.timeStamp);
+				// the requestId is the url after the domain
+				const requestId = generateRequestId(details.url);
+				const endpoint = extractEndpointName(details.url);
 				const stored = await getStoredRequests();
 
 				if (stored[requestId]) {
-					debugLog(`✅ Request completed: ${stored[requestId].endpoint}`, {
+					debugLog(`✅ Request completed: ${endpoint}`, {
 						status: details.statusCode,
 						fromCache: details.fromCache,
 					});
@@ -454,13 +606,17 @@ chrome.webRequest.onCompleted.addListener(
 					// Update completion status
 					stored[requestId].completed = true;
 					stored[requestId].completedAt = Date.now();
-					await storeRequest(stored[requestId]);
+					await saveRequest(requestId, {
+						completed: true,
+						completedAt: Date.now(),
+						responseStatus: details.statusCode,
+					});
 
 					// Notify popup about new request (if popup is open)
 					try {
 						chrome.runtime.sendMessage({
 							type: 'REQUEST_COMPLETED',
-							requestId: requestId,
+							endpoint,
 							request: stored[requestId],
 						});
 					} catch (error) {
@@ -468,12 +624,71 @@ chrome.webRequest.onCompleted.addListener(
 						debugLog(`📨 Could not notify popup: ${error}`);
 					}
 				}
-			})
-			.catch(console.error);
+			} catch (error) {
+				console.error(`❌ Error processing request: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		})();
+
+		// Return an empty object to ensure the listener does not block the request
+		return {};
 	},
-	{ urls: ['<all_urls>'] }
+	{ urls: ['<all_urls>'] },
+	['responseHeaders']
 );
 
+// Enhanced message handling for communication with popup
+// chrome.webRequest.onCompleted.addListener(
+// 	(details) => {
+// 		(async () => {
+// 			try {
+// 				const matchResult = await isTargetEndpoint(details.url);
+// 				if (!matchResult.isMatch) {
+// 					return;
+// 				}
+
+// 				// const requestId (= generateRequestId(details.url, details.timeStamp);
+// 				const endpoint = extractEndpointName(details.url);
+// 				const stored = await getStoredRequests();
+
+// 				if (stored[endpoint]) {
+// 					debugLog(`✅ Request completed: ${endpoint}`, {
+// 						status: details.statusCode,
+// 						fromCache: details.fromCache,
+// 					});
+
+// 					const requestId = generateRequestId(details.url, details.timeStamp);
+// 					const stored = await getStoredRequests();
+
+// 					if (stored[requestId]) {
+// 						debugLog(`✅ Request completed: ${stored[requestId].endpoint}`, {
+// 							status: details.statusCode,
+// 							fromCache: details.fromCache,
+// 						});
+
+// 						// Update completion status
+// 						stored[requestId].completed = true;
+// 						stored[requestId].completedAt = Date.now();
+// 						// Notify popup about new request (if popup is open)
+// 						try {
+// 							chrome.runtime.sendMessage({
+// 								type: 'REQUEST_COMPLETED',
+// 								requestId: requestId,
+// 								request: stored[requestId],
+// 							});
+// 						} catch (error) {
+// 							// Popup might not be open, that's okay
+// 							debugLog(`📨 Could not notify popup: ${error}`);
+// 						}
+// 					}
+// 				}
+// 			} catch (error) {
+// 				console.error(`❌ Error processing request: ${error instanceof Error ? error.message : String(error)}`);
+// 			}
+// 		})();
+// 		return {};
+// 	},
+// 	{ urls: ['<all_urls>'] }
+// );
 // Enhanced message handling for communication with popup
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 	debugLog(`📨 Received message: ${message.type}`);
@@ -506,6 +721,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 				}
 			})();
 			return true;
+		case 'INJECT_SCRIPT':
+			if (_sender.tab?.id) {
+				chrome.scripting.executeScript({
+					target: { tabId: _sender.tab.id, allFrames: true },
+					files: ['pageInterceptor.js'],
+					injectImmediately: true, // Attempts to run before page scripts
+					world: 'MAIN',
+				});
+			}
+			break;
 
 		case 'SAVE_OVERRIDE':
 			(async () => {
@@ -515,7 +740,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 						stored[message.requestId].overrideData = message.data;
 						stored[message.requestId].isOverridden = true;
 						stored[message.requestId].overrideUpdatedAt = Date.now();
-						await storeRequest(stored[message.requestId]);
+						await saveRequest(message.requestId, stored[message.requestId]);
 						// Apply a persistent DNR redirect for this URL
 						try {
 							await applyOverrideRule(stored[message.requestId].url, message.data);
@@ -544,7 +769,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 						delete stored[message.requestId].overrideData;
 						stored[message.requestId].isOverridden = false;
 						stored[message.requestId].overrideUpdatedAt = Date.now();
-						await storeRequest(stored[message.requestId]);
+						await saveRequest(message.requestId, stored[message.requestId]);
 						// Remove any DNR override rule for this URL
 						try {
 							await removeOverrideRuleByUrl(stored[message.requestId].url);
@@ -579,51 +804,39 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 				}
 			})();
 			return true;
-
 		case 'RESPONSE_CAPTURED':
 			(async () => {
 				try {
+					const { url, data } = message.payload;
+					const requestId = generateRequestId(url);
+
 					const stored = await getStoredRequests();
-					// Better matching: prefer the most recent request for the same URL (ignoring query)
-					const urlNoQuery = (message.url || '').split('?')[0];
-					const candidates = Object.values(stored).filter(
-						(r: CapturedRequest) => r.url === message.url || r.url.split('?')[0] === urlNoQuery
-					);
+					debugLog(`📡 RESPONSE_CAPTURED 👉 Captured response body for: ${requestId}`);
+					// const requestId = generateRequestId(details.url, details.timeStamp);
+					// const requestId = extractEndpointName(url); // Use the same ID logic
+					// Check if the requestId contains in the stored requests
 
-					let matchingRequest: CapturedRequest | undefined = undefined;
-					if (candidates.length > 0) {
-						// Prefer one without responseData yet
-						const pending = candidates.filter((r) => r.responseData === undefined);
-						const pool = pending.length > 0 ? pending : candidates;
-						// If a timestamp from the page is provided, pick the closest earlier request
-						if (message.timestamp) {
-							pool.sort((a, b) => Math.abs((message.timestamp as number) - a.timestamp) - Math.abs((message.timestamp as number) - b.timestamp));
-							matchingRequest = pool[0];
-						} else {
-							// Fallback to most recent
-							pool.sort((a, b) => b.timestamp - a.timestamp);
-							matchingRequest = pool[0];
-						}
-					}
-
-					if (matchingRequest) {
-						matchingRequest.responseData = message.data;
-						await storeRequest(matchingRequest);
-						debugLog(`📡 Captured response data for: ${matchingRequest.endpoint}`, {
-							url: matchingRequest.url,
-							size: typeof message.data === 'string' ? (message.data as string).length : undefined,
+					if (stored[requestId]) {
+						stored[requestId].responseData = data;
+						await saveRequest(requestId, {
+							responseData: data,
 						});
+						// Here's the body!
+						// await storeRequest(stored[requestId]);
+						console.log('RESPONSE_CAPTURED stored', stored[requestId]);
+						debugLog(`📡 Captured response body for: ${requestId}`);
 					} else {
-						debugLog(`❌ No matching request found for response: ${message.url}`);
+						debugLog(`❌ No matching request found in storage for response: ${url}`);
 					}
-					sendResponse({ success: true });
 				} catch (error) {
 					const errorMsg = error instanceof Error ? error.message : String(error);
 					debugLog(`❌ Error storing response data: ${errorMsg}`);
-					sendResponse({ success: false, error: errorMsg });
+				} finally {
+					releaseLock();
 				}
 			})();
-			return true;
+			sendResponse({ success: true });
+			return true; // Indicate
 
 		case 'DEBUG_INFO':
 			(async () => {
@@ -794,43 +1007,44 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
 	activeTabId = activeInfo.tabId;
 	debugLog(`📋 Tab activated: ${activeTabId}`);
+	// addWebRequestListener(activeTabId);
 });
 
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-	if (changeInfo.status === 'complete' && tab.active) {
-		activeTabId = tabId;
-		debugLog(`📋 Tab updated and active: ${activeTabId}`);
-	}
-});
+// chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+// 	if (changeInfo.status === 'complete' && tab.active) {
+// 		activeTabId = tabId;
+// 		debugLog(`📋 Tab updated and active: ${activeTabId}`);
+// 	}
+// });
 
-chrome.windows.onFocusChanged.addListener(async (windowId) => {
-	if (windowId !== chrome.windows.WINDOW_ID_NONE) {
-		// Update active tab when window focus changes
-		await updateActiveTab();
-	}
-});
+// chrome.windows.onFocusChanged.addListener(async (windowId) => {
+// 	if (windowId !== chrome.windows.WINDOW_ID_NONE) {
+// 		// Update active tab when window focus changes
+// 		await updateActiveTab();
+// 	}
+// });
 
 // Initialize extension with enhanced logging
-chrome.runtime.onInstalled.addListener((details) => {
-	debugLog(`🚀 Metadata Wizard extension ${details.reason}`, {
-		version: chrome.runtime.getManifest().version,
-		reason: details.reason,
-	});
+// chrome.runtime.onInstalled.addListener((details) => {
+// 	debugLog(`🚀 Metadata Wizard extension ${details.reason}`, {
+// 		version: chrome.runtime.getManifest().version,
+// 		reason: details.reason,
+// 	});
 
-	// Initialize active tab tracking
-	updateActiveTab();
+// 	// Initialize active tab tracking
+// 	updateActiveTab();
 
-	// Clear captured requests but keep URL patterns on install/update
-	if (details.reason === 'install' || details.reason === 'update') {
-		// Only clear captured requests, preserve URL patterns
-		chrome.storage.local.set({ capturedRequests: {} }).then(async () => {
-			debugLog(`🧹 Cleared captured requests for fresh start`);
-			// Ensure URL patterns are initialized (but don't overwrite existing ones)
-			const patterns = await getURLPatterns();
-			debugLog(`🔧 URL patterns loaded: ${patterns.length} patterns available`);
-		});
-	}
-});
+// 	// Clear captured requests but keep URL patterns on install/update
+// 	if (details.reason === 'install' || details.reason === 'update') {
+// 		// Only clear captured requests, preserve URL patterns
+// 		chrome.storage.local.set({ capturedRequests: {} }).then(async () => {
+// 			debugLog(`🧹 Cleared captured requests for fresh start`);
+// 			// Ensure URL patterns are initialized (but don't overwrite existing ones)
+// 			const patterns = await getURLPatterns();
+// 			debugLog(`🔧 URL patterns loaded: ${patterns.length} patterns available`);
+// 		});
+// 	}
+// });
 
 // Add startup logging
 chrome.runtime.onStartup.addListener(() => {

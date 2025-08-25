@@ -29,7 +29,7 @@ async function getContentURLPatterns(): Promise<Array<{ pattern: string; enabled
 	} catch (error) {
 		console.log('[Metadata Wizard Content] ❌ Failed to get URL patterns:', error);
 		// Fallback to default pattern
-		cachedURLPatterns = [{ pattern: '/rest/reports-metadata', enabled: true }];
+		// cachedURLPatterns = [{ pattern: '/rest/reports-metadata', enabled: true }];
 	}
 
 	return cachedURLPatterns;
@@ -73,16 +73,18 @@ injectPageInterceptorFromFile();
 
 // Relay captured responses from the page to the background
 window.addEventListener('message', (event) => {
-		if (event.source !== window) return;
-		const data = event.data;
-		if (data && data.type === 'MW_RESPONSE_CAPTURED') {
-				chrome.runtime.sendMessage({
-						type: 'RESPONSE_CAPTURED',
-						url: data.url,
-						data: data.data,
-						timestamp: data.timestamp,
-				}).catch(() => {});
-		}
+	if (event.source !== window) return;
+	const data = event.data;
+	if (data && data.type === 'MW_RESPONSE_CAPTURED') {
+		chrome.runtime
+			.sendMessage({
+				type: 'RESPONSE_CAPTURED',
+				url: data.url,
+				data: data.data,
+				timestamp: data.timestamp,
+			})
+			.catch(() => {});
+	}
 });
 
 // Listen for pattern updates from background script

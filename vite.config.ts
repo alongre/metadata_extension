@@ -5,8 +5,10 @@ import { resolve } from 'path';
 export default defineConfig({
 	plugins: [react()],
 	base: './',
+
 	build: {
 		outDir: 'dist',
+		sourcemap: true,
 		rollupOptions: {
 			input: {
 				popup: resolve(__dirname, 'src/popup.tsx'),
