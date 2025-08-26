@@ -110,23 +110,6 @@ async function saveRequest(requestId: string, data: any) {
 	}
 }
 
-// Storage helper functions
-// async function getStoredRequests(): Promise<StoredRequests> {
-// 	const result = await chrome.storage.local.get('capturedRequests');
-// 	return result.capturedRequests || {};
-// }
-
-// async function storeRequest(request: CapturedRequest): Promise<void> {
-// 	const stored = await getStoredRequests();
-// 	console.log('--------stored requests------', stored);
-// 	if (!stored[request.id]) {
-// 		stored[request.id] = request;
-// 		await chrome.storage.local.set({ capturedRequests: stored });
-// 	} else {
-// 		console.log(`already stored ${request.id}`);
-// 	}
-// }
-
 // URL Pattern storage functions - using chrome.storage.local with separate key
 async function getURLPatterns(): Promise<URLPattern[]> {
 	try {
@@ -187,16 +170,6 @@ function generateRequestId(url: string): string {
 	// remove the last / if it exists
 	url = url.endsWith('/') ? url.slice(0, -1) : url;
 	return url;
-	// const parts = url.split('/').filter((part) => part.length > 0);
-
-	// 2. Take all parts after the domain (i.e., from the 4th part onwards)
-	//    The first three parts are the protocol and the domain.
-	//    Gives: ["rest", "reports-metadata"]
-	// const pathParts = parts.slice(3);
-
-	// 3. Join the parts back together with '/' and add the leading slash
-	//    Gives: "/rest/reports-metadata"
-	// return '/' + pathParts.join('/');
 }
 
 // Extract endpoint name from URL - get the last segment of the URL path
@@ -399,65 +372,6 @@ function decodeRequestBody(body?: chrome.webRequest.WebRequestBody): any | undef
 }
 
 let currentListener: (details: chrome.webRequest.WebRequestDetails) => void;
-
-// 	// 	// Remove any existing listener
-// 	if (currentListener) {
-// 		chrome.webRequest.onBeforeRequest.removeListener(currentListener);
-// 	}
-
-// 	// Define the new listener
-// 	currentListener = function (details) {
-// 		console.log(`Request made by active tab ${tabId}:`, details);
-// 		// You can modify the request here if needed
-// 		return { cancel: false }; // or {cancel: true} to block
-// 	};
-
-// 	// Add the listener
-// 	chrome.webRequest.onBeforeRequest.addListener(
-// 		(details) => {
-// 			// Process requests from all tabs
-// 			debugLog(`🔍 Checking request: ${details.url}`);
-
-// 			// Handle async pattern matching
-// 			isTargetEndpoint(details.url)
-// 				.then((matchResult) => {
-// 					if (!matchResult.isMatch) {
-// 						return; // Skip non-matching requests silently
-// 					}
-
-// 					debugLog(`✅ Target endpoint detected: ${details.url} (pattern: ${matchResult.matchedPattern})`);
-
-// 					const requestId = generateRequestId(details.url, details.timeStamp);
-// 					const endpoint = extractEndpointName(details.url);
-
-// 					const capturedRequest: CapturedRequest = {
-// 						id: requestId,
-// 						url: details.url,
-// 						endpoint,
-// 						method: details.method,
-// 						timestamp: details.timeStamp,
-// 						isOverridden: false,
-// 						// Attempt to capture request body when present
-// 						requestBody: decodeRequestBody(details.requestBody ?? undefined),
-// 					};
-
-// 					// Store request asynchronously
-// 					storeRequest(capturedRequest)
-// 						.then(() => {
-// 							debugLog(`💾 Stored request: ${endpoint}`, capturedRequest);
-// 						})
-// 						.catch((error) => {
-// 							debugLog(`❌ Failed to store request: ${error.message}`);
-// 						});
-// 				})
-// 				.catch((error) => {
-// 					debugLog(`❌ Error checking endpoint: ${error.message}`);
-// 				});
-// 		},
-// 		{ urls: ['<all_urls>'], tabId },
-// 		['blocking', 'requestBody']
-// 	);
-// }
 
 // In background.js
 
@@ -951,103 +865,6 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 	debugLog(`📋 Tab activated: ${activeTabId}`);
 	// addWebRequestListener(activeTabId);
 });
-
-// chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-// 	if (changeInfo.status === 'complete' && tab.active) {
-// 		activeTabId = tabId;
-// 		debugLog(`📋 Tab updated and active: ${activeTabId}`);
-// 	}
-// });
-
-// chrome.windows.onFocusChanged.addListener(async (windowId) => {
-// 	if (windowId !== chrome.windows.WINDOW_ID_NONE) {
-// 		// Update active tab when window focus changes
-// 		await updateActiveTab();
-// 	}
-// });
-
-// Initialize extension with enhanced logging
-// chrome.runtime.onInstalled.addListener((details) => {
-// 	debugLog(`🚀 Metadata Wizard extension ${details.reason}`, {
-// 		version: chrome.runtime.getManifest().version,
-// 		reason: details.reason,
-// 	});
-
-// 	// Initialize active tab tracking
-// 	updateActiveTab();
-
-// 	// Clear captured requests but keep URL patterns on install/update
-// 	if (details.reason === 'install' || details.reason === 'update') {
-// 		// Only clear captured requests, preserve URL patterns
-// 		chrome.storage.local.set({ capturedRequests: {} }).then(async () => {
-// 			debugLog(`🧹 Cleared captured requests for fresh start`);
-// 			// Ensure URL patterns are initialized (but don't overwrite existing ones)
-// 			const patterns = await getURLPatterns();
-// 			debugLog(`🔧 URL patterns loaded: ${patterns.length} patterns available`);
-// 		});
-// 	}
-// });
-
-// Add startup logging
-// --- Startup Listener (Rewritten for Normalized Data) ---
-// chrome.runtime.onStartup.addListener(() => {
-// 	console.log('🔄 Extension starting up. Re-applying active DNR rules...');
-// 	(async () => {
-// 		try {
-// 			// 1. Get the map of active override IDs
-// 			const activeOverrideIds = await getActiveOverrides();
-
-// 			if (Object.keys(activeOverrideIds).length === 0) {
-// 				console.log('No active overrides to apply.');
-// 				return;
-// 			}
-
-// 			// 2. Get the full log of all requests to find the payloads
-// 			const allRequests = await getStoredRequests();
-
-// 			const rulesToAdd: chrome.declarativeNetRequest.Rule[] = [];
-
-// 			// 3. Loop through ONLY the active IDs
-// 			for (const requestId in activeOverrideIds) {
-// 				const request = allRequests[requestId];
-// 				// Find the corresponding request and ensure it has override data
-// 				if (request && request.isOverridden && request.overrideData) {
-// 					const urlKey = normalizeUrlKey(request.url);
-// 					const rule: chrome.declarativeNetRequest.Rule = {
-// 						id: ruleIdFromKey(urlKey),
-// 						priority: 1,
-// 						action: {
-// 							type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
-// 							redirect: { url: toDataUrl(request.overrideData) },
-// 						},
-// 						condition: {
-// 							regexFilter: `^${urlKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\?.*)?$`,
-// 							resourceTypes: [
-// 								chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST,
-// 								chrome.declarativeNetRequest.ResourceType.SUB_FRAME,
-// 								chrome.declarativeNetRequest.ResourceType.MAIN_FRAME,
-// 								chrome.declarativeNetRequest.ResourceType.OTHER,
-// 							],
-// 						},
-// 					};
-// 					rulesToAdd.push(rule);
-// 				}
-// 			}
-
-// 			if (rulesToAdd.length > 0) {
-// 				const ruleIdsToRemove = rulesToAdd.map((rule) => rule.id);
-// 				console.log(`♻️ Re-applying ${rulesToAdd.length} override rule(s)...`);
-// 				// Atomically update the DNR rules
-// 				await chrome.declarativeNetRequest.updateDynamicRules({
-// 					removeRuleIds: ruleIdsToRemove,
-// 					addRules: rulesToAdd,
-// 				});
-// 			}
-// 		} catch (e) {
-// 			console.error(`❌ Failed to re-apply override rules at startup:`, e);
-// 		}
-// 	})();
-// });
 
 // Test the webRequest API on startup
 debugLog(`🔧 Background script loaded. Testing webRequest API...`);

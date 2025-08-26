@@ -10,16 +10,13 @@
 	const originalFetch = window.fetch;
 	window.fetch = async function (...args) {
 		const response = await originalFetch(...args);
-		// alert('--------------fetch captured for---------' + response.url);
+
 		const clonedResponse = response.clone();
-		console.log('--------------fetch captured for---------', clonedResponse.url);
-		// const requestId = generateRequestId(clonedResponse.url, Date.now());
 
 		clonedResponse
 			.text()
 			.then((body) => {
 				if (clonedResponse.url) {
-					console.log('------dispatching custum event for---------', clonedResponse.url);
 					// Dispatch a custom event with the captured data
 					window.dispatchEvent(
 						new CustomEvent('RESPONSE_CAPTURED', {
@@ -53,22 +50,16 @@
 
 	XMLHttpRequest.prototype.send = function (...args) {
 		this.addEventListener('load', () => {
-			console.log('--------------xhr captured for---------', this._requestURL);
-			console.log('--------------xhr captured data---------', this);
 			let fullUrl;
 			try {
 				fullUrl = new URL(this._requestURL, window.location.href).href;
-				console.log('--------------xhr captured fullUrl---------', fullUrl);
 			} catch (error) {
 				// If the URL is malformed, fallback to the original string.
 				console.error(`[Interceptor] Could not parse XHR URL: ${this._requestURL}`, error);
 				fullUrl = this._requestURL;
 			}
 
-			// const clonedResponse = this.response.clone();
-			// console.log(`--------------cloned passed for---------${fullUrl}`, this.response);
 			if (fullUrl) {
-				console.log('------dispatching custum event for---------', fullUrl);
 				// Dispatch a custom event with the captured data
 				window.dispatchEvent(
 					new CustomEvent('RESPONSE_CAPTURED', {

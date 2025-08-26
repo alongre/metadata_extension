@@ -434,14 +434,8 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 
 		if (selectedRequest) {
 			try {
-				console.log('JsonEditor: Processing request:', selectedRequest.endpoint);
-				console.log('JsonEditor: selectedRequest.responseData:', selectedRequest.responseData);
-				console.log('JsonEditor: selectedRequest.overrideData:', selectedRequest.overrideData);
-
 				const hasResponse = selectedRequest.responseData !== undefined;
 				const dataToShow = selectedRequest.overrideData ?? (hasResponse ? selectedRequest.responseData : undefined);
-				console.log('JsonEditor: dataToShow', dataToShow, 'hasResponse', hasResponse);
-				console.log('JsonEditor: dataToShow type:', typeof dataToShow);
 
 				if (dataToShow === undefined) {
 					setJsonData(null);
@@ -461,7 +455,6 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 					}
 				}
 
-				console.log('JsonEditor: setting jsonData to:', parsedData);
 				setJsonData(parsedData);
 				setEditedData(parsedData);
 
@@ -535,8 +528,6 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 			});
 
 			if (response.success) {
-				console.log('🔍 Override status check result:', response.data);
-
 				// Refresh the request data from background
 				const refreshResponse = await chrome.runtime.sendMessage({ type: 'GET_REQUESTS' });
 				const requests = Object.values(refreshResponse || {}) as CapturedRequest[];
