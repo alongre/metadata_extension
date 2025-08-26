@@ -14,7 +14,6 @@
 		"type-check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@monaco-editor/react": "^4.6.0",
 		"@uiw/react-json-view": "^2.0.0-alpha.35",
 		"lucide-react": "^0.292.0",
 		"monaco-editor": "^0.44.0",

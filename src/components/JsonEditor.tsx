@@ -765,7 +765,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 						{shouldLoadData && jsonData !== null ? (
 							<div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
 								{isEditing ? (
-									<div style={{ position: 'relative' }}>
+									<div style={{ position: 'relative', paddingRight: '32px' }}>
 										{/* Editable JSON overlay */}
 										<div
 											contentEditable
@@ -784,6 +784,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 												width: '100%',
 												minHeight: '400px',
 												padding: '16px',
+
 												border: '2px solid #3b82f6',
 												borderRadius: '8px',
 												fontFamily:
