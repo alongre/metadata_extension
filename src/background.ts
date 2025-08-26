@@ -6,9 +6,6 @@
 
 console.log('SUCCESS: background.js service worker has started!');
 
-// Track the active tab
-let activeTabId: number = 0;
-
 type ResolveFunction = () => void;
 
 const storageLock = {
@@ -329,21 +326,6 @@ async function removeDnrRuleByUrl(url: string): Promise<void> {
 		delete ids[urlKey];
 		await chrome.storage.local.set({ [OVERRIDE_RULE_IDS_KEY]: ids });
 		console.log(`🧹 Removed DNR rule for ${urlKey}`);
-	}
-}
-
-// Tab tracking functions
-async function updateActiveTab() {
-	try {
-		const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-		if (tabs.length > 0) {
-			activeTabId = tabs[0].id || 0;
-			debugLog(`📋 Active tab updated: ${activeTabId}`);
-			// addWebRequestListener(activeTabId);
-		}
-	} catch (error) {
-		debugLog(`❌ Error getting active tab: ${error}`);
-		activeTabId = 0;
 	}
 }
 
@@ -857,13 +839,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			debugLog(`❌ Unknown message type: ${message.type}`);
 			sendResponse({ error: 'Unknown message type' });
 	}
-});
-
-// Set up tab tracking listeners
-chrome.tabs.onActivated.addListener(async (activeInfo) => {
-	activeTabId = activeInfo.tabId;
-	debugLog(`📋 Tab activated: ${activeTabId}`);
-	// addWebRequestListener(activeTabId);
 });
 
 // Test the webRequest API on startup

@@ -8,7 +8,6 @@
 		"declarativeNetRequest",
 		"declarativeNetRequestWithHostAccess",
 		"storage",
-		"activeTab",
 		"tabs",
 		"scripting"
 	],
