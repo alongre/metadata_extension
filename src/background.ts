@@ -400,7 +400,6 @@ function decodeRequestBody(body?: chrome.webRequest.WebRequestBody): any | undef
 
 let currentListener: (details: chrome.webRequest.WebRequestDetails) => void;
 
-// function addWebRequestListener(tabId: number) {
 // 	// 	// Remove any existing listener
 // 	if (currentListener) {
 // 		chrome.webRequest.onBeforeRequest.removeListener(currentListener);
@@ -539,89 +538,8 @@ async function clearAllDnrOverrides() {
 		[OVERRIDE_RULE_IDS_KEY]: {},
 	});
 
-	// 5. (Optional but recommended) Reset the override state on all historical requests.
-	// await acquireLock();
-	// try {
-	//     const stored = await getStoredRequests();
-	//     let updated = false;
-	//     for (const requestId in stored) {
-	//         if (stored[requestId].isOverridden) {
-	//             stored[requestId].isOverridden = false;
-	//             stored[requestId].overrideData = undefined;
-	//             updated = true;
-	//         }
-	//     }
-	//     if (updated) {
-	//         await chrome.storage.local.set({ [CAPTURED_REQUESTS_KEY]: stored });
-	//     }
-	// } finally {
-	//     releaseLock();
-	// }
-
 	console.log('✅ All overrides and DNR rules have been cleared.');
 }
-
-// Set up webRequest listeners with enhanced debugging
-
-// chrome.webRequest.onBeforeSendHeaders.addListener(
-// 	(details) => {
-// 		isTargetEndpoint(details.url)
-// 			.then((matchResult) => {
-// 				if (!matchResult.isMatch) {
-// 					return;
-// 				}
-
-// 				const requestId = generateRequestId(details.url, details.timeStamp);
-
-// 				// Store headers asynchronously
-// 				getStoredRequests()
-// 					.then((stored) => {
-// 						if (stored[requestId]) {
-// 							stored[requestId].requestHeaders = details.requestHeaders;
-// 							storeRequest(stored[requestId])
-// 								.then(() => {
-// 									debugLog(`📋 Updated headers for: ${stored[requestId].endpoint}`);
-// 								})
-// 								.catch(console.error);
-// 						}
-// 					})
-// 					.catch(console.error);
-// 			})
-// 			.catch(console.error);
-// 	},
-// 	{ urls: ['<all_urls>'] },
-// 	['requestHeaders']
-// );
-
-// Enhanced response monitoring
-// chrome.webRequest.onResponseStarted.addListener(
-// 	(details) => {
-// 		isTargetEndpoint(details.url)
-// 			.then(async (matchResult) => {
-// 				if (!matchResult.isMatch) {
-// 					return;
-// 				}
-
-// 				const requestId = generateRequestId(details.url, details.timeStamp);
-// 				const stored = await getStoredRequests();
-
-// 				if (stored[requestId]) {
-// 					debugLog(`📡 Response started for: ${stored[requestId].endpoint}`, {
-// 						status: details.statusCode,
-// 						responseHeaders: details.responseHeaders?.slice(0, 3), // Log first 3 headers
-// 					});
-
-// 					// Store response metadata
-// 					stored[requestId].responseStatus = details.statusCode;
-// 					stored[requestId].responseHeaders = details.responseHeaders;
-// 					await storeRequest(stored[requestId]);
-// 				}
-// 			})
-// 			.catch(console.error);
-// 	},
-// 	{ urls: ['<all_urls>'] },
-// 	['responseHeaders']
-// );
 
 chrome.webRequest.onCompleted.addListener(
 	(details) => {
@@ -676,59 +594,6 @@ chrome.webRequest.onCompleted.addListener(
 	['responseHeaders']
 );
 
-// Enhanced message handling for communication with popup
-// chrome.webRequest.onCompleted.addListener(
-// 	(details) => {
-// 		(async () => {
-// 			try {
-// 				const matchResult = await isTargetEndpoint(details.url);
-// 				if (!matchResult.isMatch) {
-// 					return;
-// 				}
-
-// 				// const requestId (= generateRequestId(details.url, details.timeStamp);
-// 				const endpoint = extractEndpointName(details.url);
-// 				const stored = await getStoredRequests();
-
-// 				if (stored[endpoint]) {
-// 					debugLog(`✅ Request completed: ${endpoint}`, {
-// 						status: details.statusCode,
-// 						fromCache: details.fromCache,
-// 					});
-
-// 					const requestId = generateRequestId(details.url, details.timeStamp);
-// 					const stored = await getStoredRequests();
-
-// 					if (stored[requestId]) {
-// 						debugLog(`✅ Request completed: ${stored[requestId].endpoint}`, {
-// 							status: details.statusCode,
-// 							fromCache: details.fromCache,
-// 						});
-
-// 						// Update completion status
-// 						stored[requestId].completed = true;
-// 						stored[requestId].completedAt = Date.now();
-// 						// Notify popup about new request (if popup is open)
-// 						try {
-// 							chrome.runtime.sendMessage({
-// 								type: 'REQUEST_COMPLETED',
-// 								requestId: requestId,
-// 								request: stored[requestId],
-// 							});
-// 						} catch (error) {
-// 							// Popup might not be open, that's okay
-// 							debugLog(`📨 Could not notify popup: ${error}`);
-// 						}
-// 					}
-// 				}
-// 			} catch (error) {
-// 				console.error(`❌ Error processing request: ${error instanceof Error ? error.message : String(error)}`);
-// 			}
-// 		})();
-// 		return {};
-// 	},
-// 	{ urls: ['<all_urls>'] }
-// );
 // Enhanced message handling for communication with popup
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 	debugLog(`📨 Received message: ${message.type}`);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, RotateCcw, FileJson, CheckCircle, AlertTriangle, Zap, Edit3, Pencil, Trash2 } from 'lucide-react';
 import { CapturedRequest } from '../types';
+import { ClipboardCopyButton } from './ClipboardCopyButton';
 
 interface JsonEditorProps {
 	selectedRequest: CapturedRequest | null;
@@ -26,35 +27,40 @@ interface JsonEditorLineProps {
 	onToggleCollapse: (path: string[]) => void;
 }
 
-const JsonEditorLine: React.FC<JsonEditorLineProps> = ({ 
-	value, 
-	keyName, 
-	path, 
-	depth, 
-	isLast, 
+const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
+	value,
+	keyName,
+	path,
+	depth,
+	isLast,
 	onEdit,
 	onDelete,
 	collapsed,
 	collapsedPaths,
-	onToggleCollapse 
+	onToggleCollapse,
 }) => {
 	const [isEditing, setIsEditing] = useState(false);
 	const [editValue, setEditValue] = useState('');
-	const indent = Array(depth).fill(null).map((_, i) => (
-		<span key={i} style={{ 
-			display: 'inline-block', 
-			width: '16px', 
-			borderLeft: depth > 0 ? '1px solid #e5e7eb' : 'none',
-			marginLeft: '2px',
-			paddingLeft: '2px'
-		}} />
-	)); // Use visual indentation with guide lines
-	
+	const indent = Array(depth)
+		.fill(null)
+		.map((_, i) => (
+			<span
+				key={i}
+				style={{
+					display: 'inline-block',
+					width: '16px',
+					borderLeft: depth > 0 ? '1px solid #e5e7eb' : 'none',
+					marginLeft: '2px',
+					paddingLeft: '2px',
+				}}
+			/>
+		)); // Use visual indentation with guide lines
+
 	const startEdit = () => {
 		setEditValue(typeof value === 'string' ? value : JSON.stringify(value));
 		setIsEditing(true);
 	};
-	
+
 	const saveEdit = () => {
 		try {
 			let newValue: any;
@@ -74,17 +80,17 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 			console.error('Invalid edit value:', error);
 		}
 	};
-	
+
 	const cancelEdit = () => {
 		setIsEditing(false);
 		setEditValue('');
 	};
-	
+
 	const renderValue = () => {
 		if (isEditing) {
 			return (
 				<input
-					type="text"
+					type='text'
 					value={editValue}
 					onChange={(e) => setEditValue(e.target.value)}
 					onBlur={saveEdit}
@@ -106,7 +112,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 				/>
 			);
 		}
-		
+
 		if (typeof value === 'string') {
 			return <span style={{ color: '#059669' }}>"{value}"</span>;
 		} else if (typeof value === 'number') {
@@ -116,20 +122,21 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 		} else if (value === null) {
 			return <span style={{ color: '#6b7280' }}>null</span>;
 		}
-		
+
 		return null;
 	};
-	
+
 	const isObject = typeof value === 'object' && value !== null && !Array.isArray(value);
 	const isArray = Array.isArray(value);
 	const isPrimitive = !isObject && !isArray;
-	
+
 	if (isPrimitive) {
 		return (
 			<div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
 				{indent}
 				<span style={{ fontFamily: 'monospace', fontSize: '14px' }}>
-					"{keyName}": {renderValue()}{!isLast ? ',' : ''}
+					"{keyName}": {renderValue()}
+					{!isLast ? ',' : ''}
 				</span>
 				{!isEditing && (
 					<div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
@@ -170,19 +177,19 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 			</div>
 		);
 	}
-	
+
 	// For objects and arrays - simplified view
 	if (isObject || isArray) {
 		const entries = isArray ? value.map((v: any, i: number) => [i, v]) : Object.entries(value);
 		const bracket = isArray ? ['[', ']'] : ['{', '}'];
-		
+
 		if (collapsed) {
 			// Show collapsed state with proper indentation and summary
 			const itemCount = entries.length;
-			const summary = isArray 
+			const summary = isArray
 				? `[${itemCount} item${itemCount !== 1 ? 's' : ''}]`
 				: `{${itemCount} item${itemCount !== 1 ? 's' : ''}}`;
-			
+
 			return (
 				<div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
 					{indent}
@@ -216,12 +223,31 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 						▶
 					</button>
 					<span style={{ fontFamily: 'monospace', fontSize: '14px' }}>
-						"{keyName}": <span style={{ color: '#6b7280', fontStyle: 'italic' }}>{summary}</span>{!isLast ? ',' : ''}
+						"{keyName}": <span style={{ color: '#6b7280', fontStyle: 'italic' }}>{summary}</span>
+						{!isLast ? ',' : ''}
 					</span>
+					<div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
+						<button
+							onClick={() => onDelete(path)}
+							style={{
+								padding: '2px 4px',
+								backgroundColor: 'transparent',
+								border: '1px solid #fca5a5',
+								borderRadius: '4px',
+								cursor: 'pointer',
+								opacity: 0.6,
+								transition: 'opacity 0.2s',
+							}}
+							onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+							onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+						>
+							<Trash2 size={12} style={{ color: '#dc2626' }} />
+						</button>
+					</div>
 				</div>
 			);
 		}
-		
+
 		return (
 			<div>
 				<div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
@@ -280,16 +306,24 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 					);
 				})}
 				<div style={{ display: 'flex', alignItems: 'center', fontFamily: 'monospace', fontSize: '14px' }}>
-					{indent}{bracket[1]}{!isLast ? ',' : ''}
+					{indent}
+					{bracket[1]}
+					{!isLast ? ',' : ''}
 				</div>
 			</div>
 		);
 	}
-	
+
 	return null;
 };
 
-const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride, onClearOverride, shouldLoadData = false, onRequestUpdate }) => {
+const JsonEditor: React.FC<JsonEditorProps> = ({
+	selectedRequest,
+	onSaveOverride,
+	onClearOverride,
+	shouldLoadData = false,
+	onRequestUpdate,
+}) => {
 	const [jsonData, setJsonData] = useState<any>(null);
 	const [editedData, setEditedData] = useState<any>(null);
 	const [hasChanges, setHasChanges] = useState(false);
@@ -302,16 +336,16 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 	// Helper function to update nested values
 	const updateNestedValue = (obj: any, path: string[], newValue: any): any => {
 		if (path.length === 0) return newValue;
-		
+
 		const result = Array.isArray(obj) ? [...obj] : { ...obj };
 		const key = path[0];
-		
+
 		if (path.length === 1) {
 			result[key] = newValue;
 		} else {
 			result[key] = updateNestedValue(result[key], path.slice(1), newValue);
 		}
-		
+
 		return result;
 	};
 
@@ -330,9 +364,9 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 	// Helper function to delete nested values
 	const deleteNestedValue = (obj: any, path: string[]): any => {
 		if (path.length === 0) return obj;
-		
+
 		const result = Array.isArray(obj) ? [...obj] : { ...obj };
-		
+
 		if (path.length === 1) {
 			if (Array.isArray(result)) {
 				result.splice(Number(path[0]), 1);
@@ -342,7 +376,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 		} else {
 			result[path[0]] = deleteNestedValue(result[path[0]], path.slice(1));
 		}
-		
+
 		return result;
 	};
 
@@ -359,7 +393,11 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 	};
 
 	// Helper function to create default collapsed paths (collapse ALL nested nodes)
-	const createDefaultCollapsedPaths = (obj: any, currentPath: string[] = [], collapsedSet: Set<string> = new Set()): Set<string> => {
+	const createDefaultCollapsedPaths = (
+		obj: any,
+		currentPath: string[] = [],
+		collapsedSet: Set<string> = new Set()
+	): Set<string> => {
 		if (typeof obj !== 'object' || obj === null) {
 			return collapsedSet;
 		}
@@ -393,18 +431,18 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 		setParseError(null);
 		setHasChanges(false);
 		setIsEditing(false);
-		
+
 		if (selectedRequest) {
 			try {
 				console.log('JsonEditor: Processing request:', selectedRequest.endpoint);
 				console.log('JsonEditor: selectedRequest.responseData:', selectedRequest.responseData);
 				console.log('JsonEditor: selectedRequest.overrideData:', selectedRequest.overrideData);
-				
+
 				const hasResponse = selectedRequest.responseData !== undefined;
 				const dataToShow = selectedRequest.overrideData ?? (hasResponse ? selectedRequest.responseData : undefined);
 				console.log('JsonEditor: dataToShow', dataToShow, 'hasResponse', hasResponse);
 				console.log('JsonEditor: dataToShow type:', typeof dataToShow);
-				
+
 				if (dataToShow === undefined) {
 					setJsonData(null);
 					setEditedData(null);
@@ -426,7 +464,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 				console.log('JsonEditor: setting jsonData to:', parsedData);
 				setJsonData(parsedData);
 				setEditedData(parsedData);
-				
+
 				// Set default collapsed paths for level 2 and deeper
 				const defaultCollapsed = createDefaultCollapsedPaths(parsedData);
 				setCollapsedPaths(defaultCollapsed);
@@ -480,24 +518,30 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 		}
 	};
 
+	const handleClearChanges = () => {
+		setEditedData(jsonData);
+		setHasChanges(false);
+		setParseError(null);
+	};
+
 	const handleRefreshAndCheckOverrides = async () => {
 		if (!selectedRequest) return;
 
 		try {
 			// Check for DevTools network overrides
-			const response = await chrome.runtime.sendMessage({ 
-				type: 'CHECK_OVERRIDE_STATUS', 
-				url: selectedRequest.url 
+			const response = await chrome.runtime.sendMessage({
+				type: 'CHECK_OVERRIDE_STATUS',
+				url: selectedRequest.url,
 			});
 
 			if (response.success) {
 				console.log('🔍 Override status check result:', response.data);
-				
+
 				// Refresh the request data from background
 				const refreshResponse = await chrome.runtime.sendMessage({ type: 'GET_REQUESTS' });
 				const requests = Object.values(refreshResponse || {}) as CapturedRequest[];
-				const updatedRequest = requests.find(r => r.id === selectedRequest.id);
-				
+				const updatedRequest = requests.find((r) => r.id === selectedRequest.id);
+
 				if (updatedRequest && onRequestUpdate) {
 					// Update the selected request if it has been modified
 					onRequestUpdate(updatedRequest);
@@ -515,22 +559,63 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 
 	if (!selectedRequest) {
 		return (
-			<div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f9fafb' }}>
+			<div
+				style={{
+					height: '100%',
+					display: 'flex',
+					alignItems: 'center',
+					justifyContent: 'center',
+					backgroundColor: '#f9fafb',
+				}}
+			>
 				<div style={{ textAlign: 'center', padding: '48px' }}>
-					<div style={{ width: '96px', height: '96px', backgroundColor: '#dbeafe', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
+					<div
+						style={{
+							width: '96px',
+							height: '96px',
+							backgroundColor: '#dbeafe',
+							borderRadius: '50%',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							margin: '0 auto 24px',
+						}}
+					>
 						<FileJson size={40} style={{ color: '#2563eb' }} />
 					</div>
-					<h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', margin: '0 0 12px 0' }}>Select a Request</h2>
+					<h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827', margin: '0 0 12px 0' }}>
+						Select a Request
+					</h2>
 					<p style={{ color: '#6b7280', margin: '0 0 24px 0', maxWidth: '384px', lineHeight: '1.5' }}>
 						Choose a captured request from the sidebar to view and edit its JSON response data
 					</p>
-					<div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '16px', maxWidth: '384px', margin: '0 auto' }}>
+					<div
+						style={{
+							backgroundColor: '#eff6ff',
+							border: '1px solid #bfdbfe',
+							borderRadius: '8px',
+							padding: '16px',
+							maxWidth: '384px',
+							margin: '0 auto',
+						}}
+					>
 						<div style={{ display: 'flex', alignItems: 'center' }}>
 							<Zap style={{ color: '#2563eb', marginRight: '8px' }} size={20} />
 							<div style={{ textAlign: 'left' }}>
 								<p style={{ fontWeight: '500', color: '#1e3a8a', margin: '0 0 4px 0' }}>Pro Tip</p>
 								<p style={{ fontSize: '14px', color: '#1d4ed8', margin: 0 }}>
-									Navigate to pages with <code style={{ backgroundColor: '#dbeafe', padding: '2px 4px', borderRadius: '3px', fontFamily: 'monospace' }}>Matching URL patterns</code> endpoints to start capturing
+									Navigate to pages with{' '}
+									<code
+										style={{
+											backgroundColor: '#dbeafe',
+											padding: '2px 4px',
+											borderRadius: '3px',
+											fontFamily: 'monospace',
+										}}
+									>
+										Matching URL patterns
+									</code>{' '}
+									endpoints to start capturing
 								</p>
 							</div>
 						</div>
@@ -544,21 +629,65 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 		<div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 			{/* Header */}
 			<div style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '16px' }}>
-				<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-					<div>
-						<h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#111827', display: 'flex', alignItems: 'center', margin: 0 }}>
-							<FileJson style={{ marginRight: '8px', color: '#2563eb' }} size={24} />
-							{selectedRequest.endpoint}
-						</h2>
-						<div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
+				<div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between' }}>
+					<div style={{ width: '100%' }}>
+						<div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', justifyContent: 'space-between' }}>
+							<h2
+								style={{
+									fontSize: '20px',
+									fontWeight: 'bold',
+									color: '#111827',
+									display: 'flex',
+									alignItems: 'center',
+									margin: 0,
+									paddingBottom: '8px',
+								}}
+							>
+								<FileJson style={{ marginRight: '8px', color: '#2563eb' }} size={24} />
+								{selectedRequest.endpoint}
+							</h2>
+
+							<ClipboardCopyButton textToCopy={JSON.stringify(editedData, null, 2)} />
+						</div>
+
+						<div
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: '16px',
+								marginTop: '8px',
+								fontSize: '14px',
+								color: '#6b7280',
+							}}
+						>
 							<span style={{ fontWeight: '500' }}>{selectedRequest.method}</span>
 							<span>•</span>
 							<span>{new Date(selectedRequest.timestamp).toLocaleString()}</span>
 							{selectedRequest.isOverridden && (
-								<span style={{ backgroundColor: '#fed7aa', color: '#9a3412', padding: '4px 8px', borderRadius: '9999px', fontSize: '12px', fontWeight: '500' }}>🔄 Overridden</span>
+								<span
+									style={{
+										backgroundColor: '#fed7aa',
+										color: '#9a3412',
+										padding: '4px 8px',
+										borderRadius: '9999px',
+										fontSize: '12px',
+										fontWeight: '500',
+									}}
+								>
+									🔄 Overridden
+								</span>
 							)}
 						</div>
-						<p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+						<p
+							style={{
+								fontSize: '12px',
+								color: '#6b7280',
+								margin: '4px 0 0 0',
+								overflow: 'hidden',
+								textOverflow: 'ellipsis',
+								whiteSpace: 'nowrap',
+							}}
+						>
 							{selectedRequest.url}
 						</p>
 					</div>
@@ -566,27 +695,53 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 
 				{/* Status Messages */}
 				{loadError && (
-					<div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
+					<div
+						style={{
+							marginTop: '12px',
+							padding: '12px',
+							backgroundColor: '#fef2f2',
+							border: '1px solid #fecaca',
+							borderRadius: '8px',
+							display: 'flex',
+							alignItems: 'center',
+						}}
+					>
 						<AlertTriangle style={{ color: '#ef4444', marginRight: '8px' }} size={16} />
-						<span style={{ fontSize: '14px', color: '#991b1b' }}>
-							{loadError}
-						</span>
+						<span style={{ fontSize: '14px', color: '#991b1b' }}>{loadError}</span>
 					</div>
 				)}
 
 				{hasChanges && (
-					<div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
+					<div
+						style={{
+							marginTop: '12px',
+							padding: '12px',
+							backgroundColor: '#f0fdf4',
+							border: '1px solid #bbf7d0',
+							borderRadius: '8px',
+							display: 'flex',
+							alignItems: 'center',
+						}}
+					>
 						<CheckCircle style={{ color: '#22c55e', marginRight: '8px' }} size={16} />
 						<span style={{ fontSize: '14px', color: '#166534' }}>Ready to save your changes</span>
 					</div>
 				)}
 
 				{parseError && (
-					<div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', display: 'flex', alignItems: 'center' }}>
+					<div
+						style={{
+							marginTop: '12px',
+							padding: '12px',
+							backgroundColor: '#fef2f2',
+							border: '1px solid #fecaca',
+							borderRadius: '8px',
+							display: 'flex',
+							alignItems: 'center',
+						}}
+					>
 						<AlertTriangle style={{ color: '#ef4444', marginRight: '8px' }} size={16} />
-						<span style={{ fontSize: '14px', color: '#991b1b' }}>
-							{parseError}
-						</span>
+						<span style={{ fontSize: '14px', color: '#991b1b' }}>{parseError}</span>
 					</div>
 				)}
 			</div>
@@ -594,7 +749,19 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 			{/* JSON Viewer/Editor Area */}
 			<div style={{ position: 'relative', flex: 1, padding: '16px' }}>
 				<div style={{ position: 'absolute', inset: '16px 16px 72px 16px' }}>
-					<div style={{ width: '100%', height: '100%', border: '2px solid #d1d5db', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#ffffff', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', display: 'flex', flexDirection: 'column' }}>
+					<div
+						style={{
+							width: '100%',
+							height: '100%',
+							border: '2px solid #d1d5db',
+							borderRadius: '12px',
+							overflow: 'hidden',
+							backgroundColor: '#ffffff',
+							boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+							display: 'flex',
+							flexDirection: 'column',
+						}}
+					>
 						{shouldLoadData && jsonData !== null ? (
 							<div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
 								{isEditing ? (
@@ -619,7 +786,8 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 												padding: '16px',
 												border: '2px solid #3b82f6',
 												borderRadius: '8px',
-												fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+												fontFamily:
+													'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
 												fontSize: '14px',
 												lineHeight: '1.6',
 												backgroundColor: '#f8fafc',
@@ -634,40 +802,43 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 													.replace(/</g, '&lt;')
 													.replace(/>/g, '&gt;')
 													.replace(/"/g, '&quot;')
-													.replace(/'/g, '&#39;')
+													.replace(/'/g, '&#39;'),
 											}}
 										/>
 										{parseError && (
-											<div style={{
-												marginTop: '8px',
-												padding: '8px 12px',
-												backgroundColor: '#fef2f2',
-												border: '1px solid #fecaca',
-												borderRadius: '6px',
-												color: '#dc2626',
-												fontSize: '14px',
-												display: 'flex',
-												alignItems: 'center'
-											}}>
+											<div
+												style={{
+													marginTop: '8px',
+													padding: '8px 12px',
+													backgroundColor: '#fef2f2',
+													border: '1px solid #fecaca',
+													borderRadius: '6px',
+													color: '#dc2626',
+													fontSize: '14px',
+													display: 'flex',
+													alignItems: 'center',
+												}}
+											>
 												<AlertTriangle size={16} style={{ marginRight: '8px' }} />
 												{parseError}
 											</div>
 										)}
 									</div>
 								) : (
-									<div style={{ 
-										fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-										fontSize: '14px',
-										lineHeight: '1.5',
-										backgroundColor: '#ffffff',
-										border: '1px solid #e5e7eb',
-										borderRadius: '8px',
-										padding: '16px',
-									}}>
+									<div
+										style={{
+											fontFamily:
+												'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+											fontSize: '14px',
+											lineHeight: '1.5',
+											backgroundColor: '#ffffff',
+											border: '1px solid #e5e7eb',
+											borderRadius: '8px',
+											padding: '16px',
+										}}
+									>
 										{/* Custom inline editable JSON tree */}
-										<div style={{ marginBottom: '4px', fontWeight: 'bold', color: '#374151' }}>
-											{'{'}
-										</div>
+										<div style={{ marginBottom: '4px', fontWeight: 'bold', color: '#374151' }}>{'{'}</div>
 										{Object.entries(editedData).map(([key, value], index, array) => (
 											<JsonEditorLine
 												key={key}
@@ -683,18 +854,36 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 												onToggleCollapse={handleToggleCollapse}
 											/>
 										))}
-										<div style={{ fontWeight: 'bold', color: '#374151' }}>
-											{'}'}
-										</div>
+										<div style={{ fontWeight: 'bold', color: '#374151' }}>{'}'}</div>
 									</div>
 								)}
 							</div>
 						) : shouldLoadData ? (
-							<div style={{ padding: '16px', color: '#6b7280', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+							<div
+								style={{
+									padding: '16px',
+									color: '#6b7280',
+									textAlign: 'center',
+									display: 'flex',
+									alignItems: 'center',
+									justifyContent: 'center',
+									height: '100%',
+								}}
+							>
 								No response data available
 							</div>
 						) : (
-							<div style={{ padding: '16px', color: '#6b7280', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+							<div
+								style={{
+									padding: '16px',
+									color: '#6b7280',
+									textAlign: 'center',
+									display: 'flex',
+									alignItems: 'center',
+									justifyContent: 'center',
+									height: '100%',
+								}}
+							>
 								Click on a request in the sidebar to load and view its JSON response
 							</div>
 						)}
@@ -702,26 +891,36 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 				</div>
 
 				{/* Bottom Action Bar */}
-				<div style={{ position: 'absolute', left: '16px', bottom: '16px', display: 'flex', justifyContent: 'flex-start', gap: '12px', height: '40px' }}>
+				<div
+					style={{
+						position: 'absolute',
+						left: '16px',
+						bottom: '16px',
+						display: 'flex',
+						justifyContent: 'flex-start',
+						gap: '12px',
+						height: '40px',
+					}}
+				>
 					{/* Edit/Done Button */}
 					<button
 						onClick={handleEditToggle}
 						disabled={!jsonData}
-						style={{ 
-							padding: '8px 16px', 
-							backgroundColor: isEditing ? '#059669' : '#6366f1', 
-							color: 'white', 
-							fontWeight: '600', 
-							borderRadius: '8px', 
-							border: 'none', 
-							cursor: jsonData ? 'pointer' : 'not-allowed', 
-							display: 'flex', 
-							alignItems: 'center', 
-							justifyContent: 'center', 
-							boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', 
-							transition: 'all 0.2s', 
+						style={{
+							padding: '8px 16px',
+							backgroundColor: isEditing ? '#059669' : '#6366f1',
+							color: 'white',
+							fontWeight: '600',
+							borderRadius: '8px',
+							border: 'none',
+							cursor: jsonData ? 'pointer' : 'not-allowed',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+							transition: 'all 0.2s',
 							height: '40px',
-							opacity: jsonData ? 1 : 0.5
+							opacity: jsonData ? 1 : 0.5,
 						}}
 					>
 						<Edit3 size={16} style={{ marginRight: '8px' }} />
@@ -732,25 +931,35 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 					<button
 						onClick={handleSave}
 						disabled={!hasChanges || isSaving || !!parseError}
-						style={{ 
-							padding: '8px 16px', 
-							backgroundColor: hasChanges && !isSaving && !parseError ? '#2563eb' : '#9ca3af', 
-							color: 'white', 
-							fontWeight: '600', 
-							borderRadius: '8px', 
-							border: 'none', 
-							cursor: hasChanges && !isSaving && !parseError ? 'pointer' : 'not-allowed', 
-							display: 'flex', 
-							alignItems: 'center', 
-							justifyContent: 'center', 
-							boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', 
-							transition: 'all 0.2s', 
-							height: '40px' 
+						style={{
+							padding: '8px 16px',
+							backgroundColor: hasChanges && !isSaving && !parseError ? '#2563eb' : '#9ca3af',
+							color: 'white',
+							fontWeight: '600',
+							borderRadius: '8px',
+							border: 'none',
+							cursor: hasChanges && !isSaving && !parseError ? 'pointer' : 'not-allowed',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+							transition: 'all 0.2s',
+							height: '40px',
 						}}
 					>
 						{isSaving ? (
 							<>
-								<div style={{ width: '16px', height: '16px', border: '2px solid white', borderTop: '2px solid transparent', borderRadius: '50%', marginRight: '8px', animation: 'spin 1s linear infinite' }} />
+								<div
+									style={{
+										width: '16px',
+										height: '16px',
+										border: '2px solid white',
+										borderTop: '2px solid transparent',
+										borderRadius: '50%',
+										marginRight: '8px',
+										animation: 'spin 1s linear infinite',
+									}}
+								/>
 								Saving...
 							</>
 						) : (
@@ -765,17 +974,17 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 					{isEditing && (
 						<button
 							onClick={handleRefreshAndCheckOverrides}
-							style={{ 
-								padding: '8px 16px', 
-								fontSize: '14px', 
-								fontWeight: '500', 
-								color: '#374151', 
-								backgroundColor: '#ffffff', 
-								border: '1px solid #d1d5db', 
-								borderRadius: '8px', 
-								cursor: 'pointer', 
-								transition: 'all 0.2s', 
-								height: '40px' 
+							style={{
+								padding: '8px 16px',
+								fontSize: '14px',
+								fontWeight: '500',
+								color: '#374151',
+								backgroundColor: '#ffffff',
+								border: '1px solid #d1d5db',
+								borderRadius: '8px',
+								cursor: 'pointer',
+								transition: 'all 0.2s',
+								height: '40px',
 							}}
 						>
 							Refresh
@@ -786,24 +995,47 @@ const JsonEditor: React.FC<JsonEditorProps> = ({ selectedRequest, onSaveOverride
 					{selectedRequest?.isOverridden && (
 						<button
 							onClick={handleClearOverride}
-							style={{ 
-								padding: '8px 16px', 
-								fontSize: '14px', 
-								fontWeight: '500', 
-								color: '#c2410c', 
-								backgroundColor: '#fff7ed', 
-								border: '1px solid #fed7aa', 
-								borderRadius: '8px', 
-								cursor: 'pointer', 
-								transition: 'all 0.2s', 
-								display: 'flex', 
-								alignItems: 'center', 
-								justifyContent: 'center', 
-								height: '40px' 
+							style={{
+								padding: '8px 16px',
+								fontSize: '14px',
+								fontWeight: '500',
+								color: '#c2410c',
+								backgroundColor: '#fff7ed',
+								border: '1px solid #fed7aa',
+								borderRadius: '8px',
+								cursor: 'pointer',
+								transition: 'all 0.2s',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								height: '40px',
 							}}
 						>
 							<RotateCcw size={16} style={{ marginRight: '8px' }} />
 							Reset
+						</button>
+					)}
+					{hasChanges && (
+						<button
+							onClick={handleClearChanges}
+							style={{
+								padding: '8px 16px',
+								fontSize: '14px',
+								fontWeight: '500',
+								color: '#c2410c',
+								backgroundColor: '#fff7ed',
+								border: '1px solid #fed7aa',
+								borderRadius: '8px',
+								cursor: 'pointer',
+								transition: 'all 0.2s',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								height: '40px',
+							}}
+						>
+							<RotateCcw size={16} style={{ marginRight: '8px' }} />
+							Clear Changes
 						</button>
 					)}
 				</div>
