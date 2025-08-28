@@ -87,6 +87,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 	};
 
 	const isLink = (value: string): boolean => {
+		if (typeof value !== 'string') return false;
 		return (value.includes('http://') || value.includes	('https://'))
 	}
 
