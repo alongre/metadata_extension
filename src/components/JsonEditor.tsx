@@ -86,6 +86,11 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 		setEditValue('');
 	};
 
+	const isLink = (value: string): boolean => {
+		return (value.includes('http://') || value.includes	('https://'))
+	}
+
+
 	const renderValue = () => {
 		if (isEditing) {
 			return (
@@ -110,6 +115,14 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 						minWidth: '100px',
 					}}
 				/>
+			);
+		}
+
+		if (isLink(value)) {
+			return (
+				<a href={value} target='_blank' rel='noopener noreferrer' style={{ color: '#3b82f6' }}>
+					"{value}"
+				</a>
 			);
 		}
 
