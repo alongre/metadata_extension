@@ -1,8 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Save, RotateCcw, FileJson, CheckCircle, AlertTriangle, Zap, Edit3, Pencil, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Save, RotateCcw, FileJson, CheckCircle, AlertTriangle, Zap, Edit3, Pencil, Trash2, Copy, Clipboard } from 'lucide-react';
 import { CapturedRequest } from '../types';
 import { ClipboardCopyButton } from './ClipboardCopyButton';
-
+import { useClipboard } from '../hooks/useClipboard';
+import { EditorView, lineNumbers, keymap } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
+import { json } from '@codemirror/lang-json';
+import { unfoldAll, foldAll, syntaxHighlighting, defaultHighlightStyle, foldGutter, indentOnInput, bracketMatching } from '@codemirror/language';
+import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
+import { searchKeymap } from '@codemirror/search';
+import { closeBrackets, autocompletion } from '@codemirror/autocomplete';
 interface JsonEditorProps {
 	selectedRequest: CapturedRequest | null;
 	onSaveOverride: (requestId: string, data: any) => void;
@@ -10,6 +17,166 @@ interface JsonEditorProps {
 	shouldLoadData?: boolean; // New prop to control when to load data
 	onRequestUpdate?: (request: CapturedRequest) => void; // For updating request when override status changes
 }
+
+// Custom function to fold all nested items starting from level 1 (like tree view)
+const foldNestedToLevel1 = (view: EditorView) => {
+	// Instead of folding everything, we need to fold selectively
+	// We should see the top-level keys but collapse their values
+	console.log('foldNestedToLevel1 called, document length:', view.state.doc.length);
+	
+	const state = view.state;
+	const doc = state.doc;
+	const text = doc.toString();
+	
+	console.log('document content preview:', text.substring(0, 200));
+	
+	// Don't use foldAll - it collapses everything including root
+	// Instead, let's try a different approach: fold only nested objects/arrays
+	
+	// For now, let's not fold anything and see the structure
+	console.log('Skipping fold to see full structure');
+	
+	// TODO: Implement selective folding that matches tree view
+};
+
+// CodeMirror JSON Editor Component
+interface CodeMirrorEditorProps {
+	ref?: React.Ref<{ foldAll: () => void; unfoldAll: () => void }>;
+
+	value: string;
+	onChange: (value: string) => void;
+	onError: (error: string | null) => void;
+}
+const CodeMirrorEditor = React.forwardRef<
+	{ foldAll: () => void; unfoldAll: () => void },
+	Omit<CodeMirrorEditorProps, 'ref'>
+>(({ value, onChange, onError }, ref) => {
+	const editorRef = useRef<HTMLDivElement>(null);
+	const viewRef = useRef<EditorView | null>(null);
+
+	// Expose fold methods via ref
+	React.useImperativeHandle(ref, () => ({
+foldAll: () => {
+			if (viewRef.current) {
+				foldAll(viewRef.current);
+			}
+		},
+		unfoldAll: () => {
+			if (viewRef.current) {
+				unfoldAll(viewRef.current);
+			}
+		}
+	}));
+
+	useEffect(() => {
+		if (!editorRef.current) return;
+
+		// Create the editor state
+		const state = EditorState.create({
+			doc: value,
+			extensions: [
+				lineNumbers(),
+				foldGutter(),
+				history(),
+				indentOnInput(),
+				bracketMatching(),
+				closeBrackets(),
+				autocompletion(),
+				keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+				json(),
+				syntaxHighlighting(defaultHighlightStyle),
+				EditorView.theme({
+'&': {
+fontSize: '14px',
+fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+},
+'.cm-editor': {
+border: '2px solid #3b82f6',
+borderRadius: '8px',
+backgroundColor: '#ffffff'
+},
+'.cm-focused': {
+outline: 'none',
+borderColor: '#1d4ed8'
+},
+'.cm-content': {
+padding: '16px',
+minHeight: '400px'
+},
+// JSON syntax highlighting
+'.tok-string': { color: '#22c55e' },
+'.tok-number': { color: '#3b82f6' },
+'.tok-atom': { color: '#f59e0b' },
+'.tok-keyword': { color: '#8b5cf6' },
+'.tok-punctuation': { color: '#64748b' },
+'.tok-bracket': { color: '#64748b' },
+'.tok-brace': { color: '#64748b' },
+'.cm-string': { color: '#22c55e' },
+'.cm-number': { color: '#3b82f6' },
+'.cm-atom': { color: '#f59e0b' },
+'.cm-keyword': { color: '#8b5cf6' },
+}),
+				EditorView.updateListener.of((update) => {
+					if (update.docChanged) {
+						const newValue = update.state.doc.toString();
+						onChange(newValue);
+						
+						// Validate JSON
+						try {
+							JSON.parse(newValue);
+							onError(null);
+						} catch (e) {
+							onError('Invalid JSON format');
+						}
+					}
+				})
+			]
+		});
+
+		// Create the editor view
+		const view = new EditorView({
+state,
+parent: editorRef.current
+});
+
+		viewRef.current = view;
+
+		// Auto-fold JSON content on startup (only nested items up to level 1)
+		setTimeout(() => {
+			if (viewRef.current) {
+				console.log('Attempting to fold on startup');
+				foldNestedToLevel1(viewRef.current);
+			}
+		}, 1000);
+
+		return () => {
+			view.destroy();
+		};
+	}, []);
+
+	// Update content when value prop changes
+	useEffect(() => {
+		if (viewRef.current && viewRef.current.state.doc.toString() !== value) {
+			viewRef.current.dispatch({
+changes: {
+from: 0,
+to: viewRef.current.state.doc.length,
+insert: value
+}
+});
+			
+			// Auto-fold JSON content after updating (only nested items up to level 1)
+			setTimeout(() => {
+				if (viewRef.current) {
+					console.log('Attempting to fold after content update');
+					foldNestedToLevel1(viewRef.current);
+				}
+			}, 500);
+		}
+	}, [value]);
+
+	return <div ref={editorRef} style={{ minHeight: '400px' }} />;
+});
 
 // React JSON Viewer component with editing capabilities
 
@@ -25,6 +192,11 @@ interface JsonEditorLineProps {
 	collapsed: boolean;
 	collapsedPaths: Set<string>;
 	onToggleCollapse: (path: string[]) => void;
+	onCopy?: (path: string[], value: any) => void;
+	onPaste?: (path: string[]) => void;
+	clipboardData?: any;
+	isEditing?: boolean;
+	recentlyCopiedPath?: string | null;
 }
 
 const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
@@ -38,8 +210,13 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 	collapsed,
 	collapsedPaths,
 	onToggleCollapse,
+	onCopy,
+	onPaste,
+	clipboardData,
+	isEditing: isInEditMode = false,
+	recentlyCopiedPath,
 }) => {
-	const [isEditing, setIsEditing] = useState(false);
+	const [isEditingValue, setIsEditingValue] = useState(false);
 	const [editValue, setEditValue] = useState('');
 	const indent = Array(depth)
 		.fill(null)
@@ -58,7 +235,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 
 	const startEdit = () => {
 		setEditValue(typeof value === 'string' ? value : JSON.stringify(value));
-		setIsEditing(true);
+		setIsEditingValue(true);
 	};
 
 	const saveEdit = () => {
@@ -74,7 +251,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 				newValue = JSON.parse(editValue);
 			}
 			onEdit(path, newValue);
-			setIsEditing(false);
+			setIsEditingValue(false);
 		} catch (error) {
 			// Invalid JSON, don't save
 			console.error('Invalid edit value:', error);
@@ -82,18 +259,33 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 	};
 
 	const cancelEdit = () => {
-		setIsEditing(false);
+		setIsEditingValue(false);
 		setEditValue('');
 	};
 
+	const handleCopy = () => {
+		if (onCopy) {
+			onCopy(path, value);
+		}
+	};
+
+	const handlePaste = () => {
+		if (onPaste && clipboardData !== undefined) {
+			onPaste(path);
+		}
+	};
+
+	const pathKey = path.join('.');
+	const wasRecentlyCopied = recentlyCopiedPath === pathKey;
+
 	const isLink = (value: string): boolean => {
 		if (typeof value !== 'string') return false;
-		return (value.includes('http://') || value.includes	('https://'))
+		return (value.includes('http://') || value.includes('https://'))
 	}
 
 
 	const renderValue = () => {
-		if (isEditing) {
+		if (isEditingValue) {
 			return (
 				<input
 					type='text'
@@ -146,16 +338,57 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 
 	if (isPrimitive) {
 		return (
-			<div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+			<div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '2px' }}>
 				{indent}
 				<span style={{ fontFamily: 'monospace', fontSize: '14px' }}>
 					"{keyName}": {renderValue()}
 					{!isLast ? ',' : ''}
 				</span>
-				{!isEditing && (
+				{!isEditingValue && !isInEditMode && (
 					<div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
 						<button
+							onClick={handleCopy}
+							title={wasRecentlyCopied ? "Copied!" : "Copy value"}
+							style={{
+								padding: '2px 4px',
+								backgroundColor: wasRecentlyCopied ? '#f0fdf4' : 'transparent',
+								border: `1px solid ${wasRecentlyCopied ? '#22c55e' : '#d1d5db'}`,
+								borderRadius: '4px',
+								cursor: 'pointer',
+								opacity: 0.6,
+								transition: 'opacity 0.2s',
+							}}
+							onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+							onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+						>
+							{wasRecentlyCopied ? (
+								<CheckCircle size={12} style={{ color: '#22c55e' }} />
+							) : (
+								<Copy size={12} style={{ color: '#6b7280' }} />
+							)}
+						</button>
+						{clipboardData !== undefined && (
+							<button
+								onClick={handlePaste}
+								title="Paste value"
+								style={{
+									padding: '2px 4px',
+									backgroundColor: 'transparent',
+									border: '1px solid #d1d5db',
+									borderRadius: '4px',
+									cursor: 'pointer',
+									opacity: 0.6,
+									transition: 'opacity 0.2s',
+								}}
+								onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+								onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+							>
+								<Clipboard size={12} style={{ color: '#6b7280' }} />
+							</button>
+						)}
+						<button
 							onClick={startEdit}
+							title="Edit value"
 							style={{
 								padding: '2px 4px',
 								backgroundColor: 'transparent',
@@ -172,6 +405,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 						</button>
 						<button
 							onClick={() => onDelete(path)}
+							title="Delete property"
 							style={{
 								padding: '2px 4px',
 								backgroundColor: 'transparent',
@@ -185,6 +419,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 							onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
 						>
 							<Trash2 size={12} style={{ color: '#dc2626' }} />
+
 						</button>
 					</div>
 				)}
@@ -205,7 +440,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 				: `{${itemCount} item${itemCount !== 1 ? 's' : ''}}`;
 
 			return (
-				<div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+				<div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '2px' }}>
 					{indent}
 					<button
 						onClick={() => onToggleCollapse(path)}
@@ -219,7 +454,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 							fontSize: '12px',
 							color: '#374151',
 							display: 'flex',
-							alignItems: 'center',
+							alignItems: 'flex-start',
 							justifyContent: 'center',
 							minWidth: '20px',
 							height: '20px',
@@ -240,31 +475,74 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 						"{keyName}": <span style={{ color: '#6b7280', fontStyle: 'italic' }}>{summary}</span>
 						{!isLast ? ',' : ''}
 					</span>
-					<div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
-						<button
-							onClick={() => onDelete(path)}
-							style={{
-								padding: '2px 4px',
-								backgroundColor: 'transparent',
-								border: '1px solid #fca5a5',
-								borderRadius: '4px',
-								cursor: 'pointer',
-								opacity: 0.6,
-								transition: 'opacity 0.2s',
-							}}
-							onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-							onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
-						>
-							<Trash2 size={12} style={{ color: '#dc2626' }} />
-						</button>
-					</div>
+					{!isInEditMode && (
+						<div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
+							<button
+								onClick={handleCopy}
+								title={wasRecentlyCopied ? "Copied!" : "Copy object/array"}
+								style={{
+									padding: '2px 4px',
+									backgroundColor: wasRecentlyCopied ? '#f0fdf4' : 'transparent',
+									border: `1px solid ${wasRecentlyCopied ? '#22c55e' : '#d1d5db'}`,
+									borderRadius: '4px',
+									cursor: 'pointer',
+									opacity: 0.6,
+									transition: 'opacity 0.2s',
+								}}
+								onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+								onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+							>
+								{wasRecentlyCopied ? (
+									<CheckCircle size={12} style={{ color: '#22c55e' }} />
+								) : (
+									<Copy size={12} style={{ color: '#6b7280' }} />
+								)}
+							</button>
+							{clipboardData !== undefined && (
+								<button
+									onClick={handlePaste}
+									title="Paste object/array"
+									style={{
+										padding: '2px 4px',
+										backgroundColor: 'transparent',
+										border: '1px solid #d1d5db',
+										borderRadius: '4px',
+										cursor: 'pointer',
+										opacity: 0.6,
+										transition: 'opacity 0.2s',
+									}}
+									onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+									onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+								>
+									<Clipboard size={12} style={{ color: '#6b7280' }} />
+								</button>
+							)}
+							<button
+								onClick={() => onDelete(path)}
+								title="Delete object/array"
+								style={{
+									padding: '2px 4px',
+									backgroundColor: 'transparent',
+									border: '1px solid #fca5a5',
+									borderRadius: '4px',
+									cursor: 'pointer',
+									opacity: 0.6,
+									transition: 'opacity 0.2s',
+								}}
+								onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+								onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+							>
+								<Trash2 size={12} style={{ color: '#dc2626' }} />
+							</button>
+						</div>
+					)}
 				</div>
 			);
 		}
 
 		return (
 			<div>
-				<div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+				<div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '2px' }}>
 					{indent}
 					<button
 						onClick={() => onToggleCollapse(path)}
@@ -278,7 +556,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 							fontSize: '12px',
 							color: '#374151',
 							display: 'flex',
-							alignItems: 'center',
+							alignItems: 'flex-start',
 							justifyContent: 'center',
 							minWidth: '20px',
 							height: '20px',
@@ -298,6 +576,67 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 					<span style={{ fontFamily: 'monospace', fontSize: '14px' }}>
 						"{keyName}": {bracket[0]}
 					</span>
+					{!isInEditMode && (
+						<div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
+							<button
+								onClick={handleCopy}
+								title={wasRecentlyCopied ? "Copied!" : "Copy object/array"}
+								style={{
+									padding: '2px 4px',
+									backgroundColor: wasRecentlyCopied ? '#f0fdf4' : 'transparent',
+									border: `1px solid ${wasRecentlyCopied ? '#22c55e' : '#d1d5db'}`,
+									borderRadius: '4px',
+									cursor: 'pointer',
+									opacity: 0.6,
+									transition: 'opacity 0.2s',
+								}}
+								onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+								onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+							>
+								{wasRecentlyCopied ? (
+									<CheckCircle size={12} style={{ color: '#22c55e' }} />
+								) : (
+									<Copy size={12} style={{ color: '#6b7280' }} />
+								)}
+							</button>
+							{clipboardData !== undefined && (
+								<button
+									onClick={handlePaste}
+									title="Paste object/array"
+									style={{
+										padding: '2px 4px',
+										backgroundColor: 'transparent',
+										border: '1px solid #d1d5db',
+										borderRadius: '4px',
+										cursor: 'pointer',
+										opacity: 0.6,
+										transition: 'opacity 0.2s',
+									}}
+									onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+									onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+								>
+									<Clipboard size={12} style={{ color: '#6b7280' }} />
+								</button>
+							)}
+							<button
+								onClick={() => onDelete(path)}
+								title="Delete object/array"
+								style={{
+									padding: '2px 4px',
+									backgroundColor: 'transparent',
+									border: '1px solid #fca5a5',
+									borderRadius: '4px',
+									cursor: 'pointer',
+									opacity: 0.6,
+									transition: 'opacity 0.2s',
+								}}
+								onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+								onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
+							>
+								<Trash2 size={12} style={{ color: '#dc2626' }} />
+							</button>
+						</div>
+					)}
 				</div>
 				{entries.map(([key, val], index) => {
 					const childPath = [...path, String(key)];
@@ -316,10 +655,15 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 							collapsed={isChildCollapsed}
 							collapsedPaths={collapsedPaths}
 							onToggleCollapse={onToggleCollapse}
+							onCopy={onCopy}
+							onPaste={onPaste}
+							clipboardData={clipboardData}
+							isEditing={isInEditMode}
+							recentlyCopiedPath={recentlyCopiedPath}
 						/>
 					);
 				})}
-				<div style={{ display: 'flex', alignItems: 'center', fontFamily: 'monospace', fontSize: '14px' }}>
+				<div style={{ display: 'flex', alignItems: 'flex-start', fontFamily: 'monospace', fontSize: '14px' }}>
 					{indent}
 					{bracket[1]}
 					{!isLast ? ',' : ''}
@@ -346,6 +690,74 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 	const [isEditing, setIsEditing] = useState(false);
 	const [parseError, setParseError] = useState<string | null>(null);
 	const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set());
+	const [jsonText, setJsonText] = useState<string>(''); // For CodeMirror editor
+	const [recentlyCopiedPath, setRecentlyCopiedPath] = useState<string | null>(null); // Track which node was recently copied
+	const [clipboardData, setClipboardData] = useState<any>(undefined); // Cache clipboard data
+	const { copy: copyToClipboard } = useClipboard({ timeout: 2000 });
+        const codeMirrorRef = useRef<{ foldAll: () => void; unfoldAll: () => void }>(null);
+
+	// Check clipboard for any content
+	const checkClipboard = async () => {
+		try {
+			if (navigator.clipboard && navigator.clipboard.readText) {
+				const clipboardText = await navigator.clipboard.readText();
+				if (clipboardText.trim()) {
+					// Try to parse as JSON first
+					try {
+						const parsedData = JSON.parse(clipboardText);
+						console.log('Parsed JSON:', parsedData); // Debug log
+						setClipboardData(parsedData);
+						return parsedData;
+					} catch {
+						// Not valid JSON, but still has content - store as string
+						setClipboardData(clipboardText);
+						return clipboardText;
+					}
+				} else {
+					// Empty clipboard
+					// Keep existing clipboard data if access fails
+				}
+			}
+		} catch (error) {
+			// Clipboard access failed, clear clipboard data
+			console.log('Clipboard access failed:', error); // Debug log
+			// Keep existing clipboard data if access fails
+		}
+		return undefined;
+	};
+
+	// Check clipboard on component mount and periodically
+	useEffect(() => {
+		checkClipboard();
+		
+		// Check clipboard every 2 seconds when component is mounted
+		const interval = setInterval(checkClipboard, 1000);
+		
+		// Add focus event listener to check clipboard when window comes back into focus
+		const handleWindowFocus = () => {
+			checkClipboard();
+		};
+		
+		// Add visibility change listener to check clipboard when tab becomes visible
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === 'visible') {
+				checkClipboard();
+			}
+		};
+		
+		window.addEventListener('focus', handleWindowFocus);
+window.addEventListener("mouseenter", handleWindowFocus);		document.addEventListener('visibilitychange', handleVisibilityChange);
+		
+		return () => {
+			clearInterval(interval);
+			window.removeEventListener('focus', handleWindowFocus);
+window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEventListener('visibilitychange', handleVisibilityChange);
+		};
+	}, []);
+
+	// Debug effect to log clipboardData changes
+	useEffect(() => {
+	}, [clipboardData]);
 
 	// Helper function to update nested values
 	const updateNestedValue = (obj: any, path: string[], newValue: any): any => {
@@ -361,6 +773,35 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 		}
 
 		return result;
+	};
+
+	// Handle copy operation
+	const handleCopy = (path: string[], value: any) => {
+		// Copy to system clipboard as formatted JSON
+		const jsonString = JSON.stringify(value, null, 2);
+		copyToClipboard(jsonString);
+		
+		// Update local cache immediately
+		setClipboardData(value);
+		
+		// Track which path was copied for visual feedback
+		const pathKey = path.join('.');
+		setRecentlyCopiedPath(pathKey);
+		
+		// Clear the visual feedback after 2 seconds
+		setTimeout(() => {
+			setRecentlyCopiedPath(null);
+		}, 2000);
+	};
+
+	// Handle paste operation
+	const handlePaste = async (path: string[]) => {
+		// Always check clipboard for latest data
+		const latestClipboardData = await checkClipboard();
+		if (latestClipboardData !== undefined) {
+			const updated = updateNestedValue(editedData, path, latestClipboardData);
+			handleJsonChange(updated);
+		}
 	};
 
 	// Handle inline editing
@@ -454,6 +895,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 				if (dataToShow === undefined) {
 					setJsonData(null);
 					setEditedData(null);
+					setJsonText('');
 					setLoadError('No response data captured yet');
 					return;
 				}
@@ -471,6 +913,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 
 				setJsonData(parsedData);
 				setEditedData(parsedData);
+				setJsonText(JSON.stringify(parsedData, null, 2)); // Set text for CodeMirror
 
 				// Set default collapsed paths for level 2 and deeper
 				const defaultCollapsed = createDefaultCollapsedPaths(parsedData);
@@ -482,10 +925,26 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 		} else {
 			setJsonData(null);
 			setEditedData(null);
+			setJsonText('');
 		}
 	}, [selectedRequest, shouldLoadData]);
 
 	const handleEditToggle = () => {
+		if (isEditing) {
+			// Switching from edit mode back to view mode
+			// Update the data from the text editor
+			try {
+				const parsed = JSON.parse(jsonText);
+				setEditedData(parsed);
+				setHasChanges(JSON.stringify(parsed) !== JSON.stringify(jsonData));
+			} catch (e) {
+				// Don't switch modes if JSON is invalid
+				return;
+			}
+		} else {
+			// Switching to edit mode
+			setJsonText(JSON.stringify(editedData, null, 2));
+		}
 		setIsEditing(!isEditing);
 	};
 
@@ -493,6 +952,18 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 		setEditedData(newValue);
 		setHasChanges(JSON.stringify(newValue) !== JSON.stringify(jsonData));
 		setParseError(null);
+	};
+
+	// Handle CodeMirror text changes
+	const handleCodeMirrorChange = (newText: string) => {
+		setJsonText(newText);
+		try {
+			const parsed = JSON.parse(newText);
+			setEditedData(parsed);
+			setHasChanges(JSON.stringify(parsed) !== JSON.stringify(jsonData));
+		} catch (e) {
+			// Don't update editedData if JSON is invalid, just keep the text
+		}
 	};
 
 	const handleSave = async () => {
@@ -527,6 +998,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 
 	const handleClearChanges = () => {
 		setEditedData(jsonData);
+		setJsonText(JSON.stringify(jsonData, null, 2));
 		setHasChanges(false);
 		setParseError(null);
 	};
@@ -568,7 +1040,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 				style={{
 					height: '100%',
 					display: 'flex',
-					alignItems: 'center',
+					alignItems: 'flex-start',
 					justifyContent: 'center',
 					backgroundColor: '#f9fafb',
 				}}
@@ -581,7 +1053,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 							backgroundColor: '#dbeafe',
 							borderRadius: '50%',
 							display: 'flex',
-							alignItems: 'center',
+							alignItems: 'flex-start',
 							justifyContent: 'center',
 							margin: '0 auto 24px',
 						}}
@@ -604,7 +1076,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 							margin: '0 auto',
 						}}
 					>
-						<div style={{ display: 'flex', alignItems: 'center' }}>
+						<div style={{ display: 'flex', alignItems: 'flex-start' }}>
 							<Zap style={{ color: '#2563eb', marginRight: '8px' }} size={20} />
 							<div style={{ textAlign: 'left' }}>
 								<p style={{ fontWeight: '500', color: '#1e3a8a', margin: '0 0 4px 0' }}>Pro Tip</p>
@@ -643,7 +1115,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 									fontWeight: 'bold',
 									color: '#111827',
 									display: 'flex',
-									alignItems: 'center',
+									alignItems: 'flex-start',
 									margin: 0,
 									paddingBottom: '8px',
 								}}
@@ -658,7 +1130,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 						<div
 							style={{
 								display: 'flex',
-								alignItems: 'center',
+								alignItems: 'flex-start',
 								gap: '16px',
 								marginTop: '8px',
 								fontSize: '14px',
@@ -688,9 +1160,9 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 								fontSize: '12px',
 								color: '#6b7280',
 								margin: '4px 0 0 0',
-								overflow: 'hidden',
-								textOverflow: 'ellipsis',
-								whiteSpace: 'nowrap',
+								overflow: 'visible',
+								wordWrap: 'break-word',
+								whiteSpace: 'normal',
 							}}
 						>
 							{selectedRequest.url}
@@ -708,7 +1180,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 							border: '1px solid #fecaca',
 							borderRadius: '8px',
 							display: 'flex',
-							alignItems: 'center',
+							alignItems: 'flex-start',
 						}}
 					>
 						<AlertTriangle style={{ color: '#ef4444', marginRight: '8px' }} size={16} />
@@ -725,7 +1197,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 							border: '1px solid #bbf7d0',
 							borderRadius: '8px',
 							display: 'flex',
-							alignItems: 'center',
+							alignItems: 'flex-start',
 						}}
 					>
 						<CheckCircle style={{ color: '#22c55e', marginRight: '8px' }} size={16} />
@@ -742,7 +1214,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 							border: '1px solid #fecaca',
 							borderRadius: '8px',
 							display: 'flex',
-							alignItems: 'center',
+							alignItems: 'flex-start',
 						}}
 					>
 						<AlertTriangle style={{ color: '#ef4444', marginRight: '8px' }} size={16} />
@@ -768,48 +1240,21 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 						}}
 					>
 						{shouldLoadData && jsonData !== null ? (
-							<div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+							<div style={{ 
+								flex: 1, 
+								overflow: 'auto', 
+								padding: '16px',
+								wordWrap: 'break-word',
+								overflowWrap: 'break-word'
+							}}>
 								{isEditing ? (
-									<div style={{ position: 'relative', paddingRight: '32px' }}>
-										{/* Editable JSON overlay */}
-										<div
-											contentEditable
-											suppressContentEditableWarning
-											onInput={(e) => {
-												try {
-													const text = e.currentTarget.textContent || '';
-													const parsed = JSON.parse(text);
-													handleJsonChange(parsed);
-													setParseError(null);
-												} catch (error) {
-													setParseError('Invalid JSON format');
-												}
-											}}
-											style={{
-												width: '100%',
-												minHeight: '400px',
-												padding: '16px',
-
-												border: '2px solid #3b82f6',
-												borderRadius: '8px',
-												fontFamily:
-													'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-												fontSize: '14px',
-												lineHeight: '1.6',
-												backgroundColor: '#f8fafc',
-												color: '#1e293b',
-												outline: 'none',
-												whiteSpace: 'pre-wrap',
-												overflowWrap: 'break-word',
-											}}
-											dangerouslySetInnerHTML={{
-												__html: JSON.stringify(editedData, null, 2)
-													.replace(/&/g, '&amp;')
-													.replace(/</g, '&lt;')
-													.replace(/>/g, '&gt;')
-													.replace(/"/g, '&quot;')
-													.replace(/'/g, '&#39;'),
-											}}
+									<div style={{ position: 'relative' }}>
+										{/* CodeMirror Editor */}
+										<CodeMirrorEditor
+                                                                                        ref={codeMirrorRef}
+											value={jsonText}
+											onChange={handleCodeMirrorChange}
+											onError={setParseError}
 										/>
 										{parseError && (
 											<div
@@ -822,7 +1267,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 													color: '#dc2626',
 													fontSize: '14px',
 													display: 'flex',
-													alignItems: 'center',
+													alignItems: 'flex-start',
 												}}
 											>
 												<AlertTriangle size={16} style={{ marginRight: '8px' }} />
@@ -851,13 +1296,18 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 												value={value}
 												keyName={key}
 												path={[key]}
-												depth={1}
+												depth={2}
 												isLast={index === array.length - 1}
 												onEdit={handleInlineEdit}
 												onDelete={handleDelete}
 												collapsed={collapsedPaths.has(key)}
 												collapsedPaths={collapsedPaths}
 												onToggleCollapse={handleToggleCollapse}
+												onCopy={handleCopy}
+												onPaste={handlePaste}
+												clipboardData={clipboardData}
+												isEditing={isEditing}
+												recentlyCopiedPath={recentlyCopiedPath}
 											/>
 										))}
 										<div style={{ fontWeight: 'bold', color: '#374151' }}>{'}'}</div>
@@ -871,7 +1321,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 									color: '#6b7280',
 									textAlign: 'center',
 									display: 'flex',
-									alignItems: 'center',
+									alignItems: 'flex-start',
 									justifyContent: 'center',
 									height: '100%',
 								}}
@@ -885,7 +1335,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 									color: '#6b7280',
 									textAlign: 'center',
 									display: 'flex',
-									alignItems: 'center',
+									alignItems: 'flex-start',
 									justifyContent: 'center',
 									height: '100%',
 								}}
@@ -911,7 +1361,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 					{/* Edit/Done Button */}
 					<button
 						onClick={handleEditToggle}
-						disabled={!jsonData}
+						disabled={!jsonData || (isEditing && !!parseError)}
 						style={{
 							padding: '8px 16px',
 							backgroundColor: isEditing ? '#059669' : '#6366f1',
@@ -919,14 +1369,14 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 							fontWeight: '600',
 							borderRadius: '8px',
 							border: 'none',
-							cursor: jsonData ? 'pointer' : 'not-allowed',
+							cursor: (jsonData && !(isEditing && parseError)) ? 'pointer' : 'not-allowed',
 							display: 'flex',
-							alignItems: 'center',
+							alignItems: 'flex-start',
 							justifyContent: 'center',
 							boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
 							transition: 'all 0.2s',
 							height: '40px',
-							opacity: jsonData ? 1 : 0.5,
+							opacity: (jsonData && !(isEditing && parseError)) ? 1 : 0.5,
 						}}
 					>
 						<Edit3 size={16} style={{ marginRight: '8px' }} />
@@ -946,7 +1396,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 							border: 'none',
 							cursor: hasChanges && !isSaving && !parseError ? 'pointer' : 'not-allowed',
 							display: 'flex',
-							alignItems: 'center',
+							alignItems: 'flex-start',
 							justifyContent: 'center',
 							boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
 							transition: 'all 0.2s',
@@ -1012,7 +1462,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 								cursor: 'pointer',
 								transition: 'all 0.2s',
 								display: 'flex',
-								alignItems: 'center',
+								alignItems: 'flex-start',
 								justifyContent: 'center',
 								height: '40px',
 							}}
@@ -1035,7 +1485,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 								cursor: 'pointer',
 								transition: 'all 0.2s',
 								display: 'flex',
-								alignItems: 'center',
+								alignItems: 'flex-start',
 								justifyContent: 'center',
 								height: '40px',
 							}}
