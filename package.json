@@ -1,6 +1,6 @@
 {
 	"name": "metadata-wizard",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "Chrome extension to intercept and override REST API calls with JSON editor",
 	"type": "module",
 	"scripts": {
