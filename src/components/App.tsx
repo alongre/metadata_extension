@@ -170,13 +170,24 @@ const App: React.FC = () => {
 	}, [isResizing]);
 
 	return (
-		<div style={{ display: 'flex', height: '600px', width: '800px', backgroundColor: '#f8fafc' }}>
+		<div style={{ 
+			display: 'flex', 
+			height: '100%', 
+			width: '100%', 
+			maxWidth: '800px',
+			maxHeight: '600px',
+			backgroundColor: '#f8fafc', 
+			overflow: 'hidden',
+			margin: '0 auto'
+		}}>
 			<div
 				style={{
 					width: `${sidebarWidth}px`,
+					height: '100%',
 					backgroundColor: 'white',
 					boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
 					flexShrink: 0,
+					overflow: 'hidden',
 				}}
 			>
 				<Sidebar
@@ -197,6 +208,7 @@ const App: React.FC = () => {
 			<div
 				style={{
 					width: '4px',
+					height: '100%',
 					backgroundColor: isResizing ? '#3b82f6' : '#d1d5db',
 					cursor: 'col-resize',
 					transition: 'background-color 0.2s',
@@ -207,9 +219,11 @@ const App: React.FC = () => {
 			<div
 				style={{
 					flex: 1,
+					height: '100%',
 					display: 'flex',
 					flexDirection: 'column',
-					minWidth: 0, // Prevent flex item from growing beyond its container
+					minWidth: 0,
+					overflow: 'hidden',
 				}}
 			>
 				{/* JSON Editor */}
@@ -218,6 +232,7 @@ const App: React.FC = () => {
 						flex: 1,
 						backgroundColor: 'white',
 						overflow: 'hidden',
+						position: 'relative',
 					}}
 				>
 					<JsonEditor

@@ -175,7 +175,7 @@ insert: value
 		}
 	}, [value]);
 
-	return <div ref={editorRef} style={{ minHeight: '400px' }} />;
+	return <div ref={editorRef} className='flex-grow' style={{ minHeight: '400px' }} />;
 });
 
 // React JSON Viewer component with editing capabilities
@@ -1350,10 +1350,10 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 				<div
 					style={{
 						position: 'absolute',
-						left: '16px',
+						right: '16px',
 						bottom: '16px',
 						display: 'flex',
-						justifyContent: 'flex-start',
+						justifyContent: 'flex-end',
 						gap: '12px',
 						height: '40px',
 					}}

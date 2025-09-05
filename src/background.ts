@@ -848,3 +848,61 @@ debugLog(`📋 Available chrome APIs:`, {
 	storage: !!chrome.storage,
 	runtime: !!chrome.runtime,
 });
+
+// Track the popup window
+let popupWindowId: number | null = null;
+
+// Open the popup when the extension icon is clicked
+chrome.action.onClicked.addListener(async () => {
+	try {
+		// Check if popup window already exists
+		if (popupWindowId !== null) {
+			try {
+				const existingWindow = await chrome.windows.get(popupWindowId);
+				if (existingWindow) {
+					// Focus the existing window
+					await chrome.windows.update(popupWindowId, { focused: true });
+					return;
+				}
+			} catch (error) {
+				// Window doesn't exist anymore, clear the reference
+				popupWindowId = null;
+			}
+		}
+
+		// Create new popup window
+		const window = await chrome.windows.create({
+			url: 'popup.html',
+			type: 'popup',
+			width: 800,
+			height: 600,
+			left: 100,
+			top: 100,
+			focused: true,
+		});
+		
+		if (window.id) {
+			popupWindowId = window.id;
+			// Force the window size after creation
+			setTimeout(() => {
+				if (popupWindowId) {
+					chrome.windows.update(popupWindowId, {
+						width: 800,
+						height: 600,
+						left: 100,
+						top: 100,
+					});
+				}
+			}, 100);
+		}
+	} catch (error) {
+		console.error('Failed to create popup window:', error);
+	}
+});
+
+// Clean up window reference when closed
+chrome.windows.onRemoved.addListener((windowId) => {
+	if (windowId === popupWindowId) {
+		popupWindowId = null;
+	}
+});
