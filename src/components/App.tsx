@@ -174,11 +174,8 @@ const App: React.FC = () => {
 			display: 'flex', 
 			height: '100%', 
 			width: '100%', 
-			maxWidth: '800px',
-			maxHeight: '600px',
 			backgroundColor: '#f8fafc', 
-			overflow: 'hidden',
-			margin: '0 auto'
+			overflow: 'hidden'
 		}}>
 			<div
 				style={{

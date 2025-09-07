@@ -3,13 +3,28 @@
 @tailwind utilities;
 
 /* Ensure proper sizing without forcing full screen */
-html, body, #root {
+html, body {
 	margin: 0 !important;
 	padding: 0 !important;
 	box-sizing: border-box !important;
 	overflow: hidden !important;
 	width: 100% !important;
 	height: 100% !important;
+	display: flex !important;
+	justify-content: center !important;
+	align-items: center !important;
+	background-color: #f1f5f9 !important;
+}
+
+#root {
+	margin: 0 !important;
+	padding: 0 !important;
+	box-sizing: border-box !important;
+	overflow: hidden !important;
+	width: 800px !important;
+	height: 600px !important;
+	max-width: 800px !important;
+	max-height: 600px !important;
 }
 
 @keyframes spin {
