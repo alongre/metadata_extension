@@ -697,6 +697,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 	const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set());
 	const [jsonText, setJsonText] = useState<string>(''); // For CodeMirror editor
 	const [originalResponseText, setOriginalResponseText] = useState<string>(''); // Original raw response for key order reference
+	const [originalResponseData, setOriginalResponseData] = useState<any>(null); // Store the original response data (before file load)
 	const [recentlyCopiedPath, setRecentlyCopiedPath] = useState<string | null>(null); // Track which node was recently copied
 	const [clipboardData, setClipboardData] = useState<any>(undefined); // Cache clipboard data
 	const { copy: copyToClipboard } = useClipboard({ timeout: 2000 });
@@ -1097,6 +1098,12 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 				const hasResponse = selectedRequest.responseData !== undefined;
 				const dataToShow = selectedRequest.overrideData ?? (hasResponse ? selectedRequest.responseData : undefined);
 
+				console.log('[JsonEditor useEffect] hasResponse:', hasResponse,
+					'hasOverrideData:', selectedRequest.overrideData !== undefined,
+					'isOverridden:', selectedRequest.isOverridden,
+					'responseData type:', typeof selectedRequest.responseData,
+					'dataToShow type:', typeof dataToShow);
+
 				if (dataToShow === undefined) {
 					setJsonData(null);
 					setEditedData(null);
@@ -1141,6 +1148,19 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 				setJsonData(parsedData);
 				setEditedData(parsedData);
 				setJsonText(formattedText || JSON.stringify(parsedData, null, 2));
+
+				// Always store the original response data for "Clear Changes" / "Reset"
+				if (hasResponse) {
+					let originalData = selectedRequest.responseData;
+					if (typeof originalData === 'string') {
+						try {
+							originalData = JSON.parse(originalData);
+						} catch (e) {
+							// keep as string
+						}
+					}
+					setOriginalResponseData(originalData);
+				}
 
 				// Set default collapsed paths for level 2 and deeper
 				const defaultCollapsed = createDefaultCollapsedPaths(parsedData);
@@ -1212,7 +1232,26 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 
 	const handleClearOverride = async () => {
 		if (!selectedRequest) return;
+		console.log('[handleClearOverride] called, originalResponseData:', originalResponseData !== null ? 'exists' : 'null',
+			'selectedRequest.responseData:', selectedRequest.responseData !== undefined ? 'exists' : 'undefined');
 		await onClearOverride(selectedRequest.id);
+
+		// Reset to original response data
+		const revertTo = originalResponseData;
+		if (revertTo !== null) {
+			// Restore the original response text for key ordering
+			if (selectedRequest.responseDataRaw) {
+				setOriginalResponseTextAndMap(selectedRequest.responseDataRaw);
+			}
+
+			const formattedText = typeof revertTo === 'string' ? revertTo : stringifyWithOrder(revertTo, 2);
+			setJsonData(revertTo);
+			setEditedData(revertTo);
+			setJsonText(formattedText);
+			setHasChanges(false);
+			setParseError(null);
+			setIsEditing(false);
+		}
 	};
 
 	const formatJson = () => {
@@ -1226,8 +1265,17 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 	};
 
 	const handleClearChanges = () => {
-		setEditedData(jsonData);
-		setJsonText(stringifyWithOrder(jsonData, 2));
+		// Revert to the original response data (before file load / edits)
+		const revertTo = originalResponseData !== null ? originalResponseData : jsonData;
+
+		// Restore the original response key ordering
+		if (selectedRequest?.responseDataRaw) {
+			setOriginalResponseTextAndMap(selectedRequest.responseDataRaw);
+		}
+
+		setJsonData(revertTo);
+		setEditedData(revertTo);
+		setJsonText(stringifyWithOrder(revertTo, 2));
 		setHasChanges(false);
 		setParseError(null);
 	};
@@ -1302,10 +1350,22 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 				const content = e.target?.result as string;
 				const parsed = JSON.parse(content);
 
-				// Update editor with loaded content
+				// Use the loaded file content as the reference for key ordering
+				setOriginalResponseTextAndMap(content);
+
+				// Update editor with loaded content (formatted to preserve key order)
+				const formattedText = stringifyWithOrder(parsed, 2);
+
+				// Check if loaded file is different from the original response data
+				const compareAgainst = originalResponseData !== null ? originalResponseData : jsonData;
+				const isDifferent = JSON.stringify(parsed) !== JSON.stringify(compareAgainst);
+
+				// Update jsonData and editedData with the loaded file
+				setJsonData(parsed);
 				setEditedData(parsed);
-				setJsonText(content);
-				setHasChanges(true);
+				setJsonText(formattedText);
+				// Mark as changed if different from the original response data
+				setHasChanges(isDifferent);
 				setParseError(null);
 
 				// If not in edit mode, switch to it
