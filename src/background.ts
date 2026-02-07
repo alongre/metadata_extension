@@ -46,6 +46,7 @@ interface CapturedRequest {
 	responseHeaders?: chrome.webRequest.HttpHeader[];
 	responseStatus?: number;
 	responseData?: any;
+	responseDataRaw?: string; // Raw response text to preserve key order
 	overrideData?: any;
 	isOverridden: boolean;
 	completed?: boolean;
@@ -652,19 +653,31 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 					const stored = await getStoredRequests();
 					debugLog(`📡 RESPONSE_CAPTURED 👉 Captured response body for: ${requestId}`);
-					// const requestId = generateRequestId(details.url, details.timeStamp);
-					// const requestId = extractEndpointName(url); // Use the same ID logic
-					// Check if the requestId contains in the stored requests
+
+					// Store the raw response text to preserve key order
+					let responseDataRaw = '';
+					let responseData = data;
+
+					if (typeof data === 'string') {
+						// Data is already a string - perfect for preserving key order
+						responseDataRaw = data;
+						responseData = data;
+					} else {
+						// If it's already an object, stringify it
+						responseDataRaw = JSON.stringify(data);
+						responseData = data;
+						debugLog(`⚠️ Response data was an object, converting to string`);
+					}
 
 					if (stored[requestId]) {
-						stored[requestId].responseData = data;
+						stored[requestId].responseData = responseData;
+						stored[requestId].responseDataRaw = responseDataRaw;
 						await saveRequest(requestId, {
-							responseData: data,
+							responseData: responseData,
+							responseDataRaw: responseDataRaw,
 						});
-						// Here's the body!
-						// await storeRequest(stored[requestId]);
 						console.log('RESPONSE_CAPTURED stored', stored[requestId]);
-						debugLog(`📡 Captured response body for: ${requestId}`);
+						debugLog(`📡 Captured response body for: ${requestId} (raw preserved: ${responseDataRaw.length} chars)`);
 					} else {
 						debugLog(`❌ No matching request found in storage for response: ${url}`);
 					}

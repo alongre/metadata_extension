@@ -13,6 +13,7 @@ export interface CapturedRequest {
 	responseHeaders?: chrome.webRequest.HttpHeader[];
 	responseStatus?: number;
 	responseData?: any;
+	responseDataRaw?: string; // Raw response text to preserve key order
 	overrideData?: any;
 	isOverridden: boolean;
 	completed?: boolean;
