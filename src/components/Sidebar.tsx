@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Trash2, Calendar, Globe, Settings } from 'lucide-react';
+import { RefreshCw, Trash2, Calendar, Globe, Settings, Maximize2, Minimize2 } from 'lucide-react';
 import { CapturedRequest } from '../types';
 
 interface SidebarProps {
@@ -11,6 +11,8 @@ interface SidebarProps {
 	onOpenSettings: () => void;
 	onClearAll: () => void;
 	overriddenUrls: string[];
+	displayMode: 'docked' | 'undocked';
+	onToggleDisplayMode: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -22,6 +24,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 	onOpenSettings,
 	onClearAll,
 	overriddenUrls,
+	displayMode,
+	onToggleDisplayMode,
 }) => {
 	const formatTime = (timestamp: number) => {
 		const date = new Date(timestamp);
@@ -68,6 +72,22 @@ const Sidebar: React.FC<SidebarProps> = ({
 						<h1 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>Metadata Wizard</h1>
 					</div>
 					<div style={{ display: 'flex', gap: '8px' }}>
+						<button
+							onClick={onToggleDisplayMode}
+							style={{
+								padding: '8px',
+								backgroundColor: 'transparent',
+								border: 'none',
+								borderRadius: '6px',
+								color: 'white',
+								cursor: 'pointer',
+							}}
+							onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#1d4ed8')}
+							onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+							title={displayMode === 'docked' ? 'Undock to Window' : 'Dock to Popup'}
+						>
+							{displayMode === 'docked' ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
+						</button>
 						<button
 							onClick={onOpenSettings}
 							style={{

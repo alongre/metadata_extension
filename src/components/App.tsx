@@ -12,10 +12,12 @@ const App: React.FC = () => {
 	const [isResizing, setIsResizing] = useState(false);
 	const [showSettings, setShowSettings] = useState(false);
 	const [overriddenUrls, setOverriddenUrls] = useState<string[]>([]);
+	const [displayMode, setDisplayMode] = useState<'docked' | 'undocked'>('docked');
 
 	useEffect(() => {
 		loadRequests();
 		loadOverrides();
+		loadDisplayMode();
 
 		// Listen for real-time request updates from background script
 		const messageListener = (message: any) => {
@@ -43,6 +45,28 @@ const App: React.FC = () => {
 	const loadOverrides = async () => {
 		const overrides = await getOverrides();
 		setOverriddenUrls(overrides);
+	};
+
+	const loadDisplayMode = async () => {
+		try {
+			const response = await chrome.runtime.sendMessage({ type: 'GET_DISPLAY_MODE' });
+			if (response.success) {
+				setDisplayMode(response.data);
+			}
+		} catch (error) {
+			console.error('Failed to load display mode:', error);
+		}
+	};
+
+	const handleToggleDisplayMode = async () => {
+		try {
+			const response = await chrome.runtime.sendMessage({ type: 'TOGGLE_DISPLAY_MODE' });
+			if (response.success) {
+				setDisplayMode(response.data);
+			}
+		} catch (error) {
+			console.error('Failed to toggle display mode:', error);
+		}
 	};
 
 	const loadRequests = async () => {
@@ -139,11 +163,28 @@ const App: React.FC = () => {
 		setIsResizing(true);
 	};
 
-	const handleMouseMove = (e: MouseEvent) => {
+	const handleMouseMove = async (e: MouseEvent) => {
 		if (!isResizing) return;
 		const newWidth = e.clientX;
 		if (newWidth >= 200 && newWidth <= 400) {
+			const oldWidth = sidebarWidth;
+			const delta = newWidth - oldWidth;
 			setSidebarWidth(newWidth);
+
+			// In undocked mode, resize the window to maintain editor size
+			if (displayMode === 'undocked') {
+				try {
+					const currentWindow = await chrome.windows.getCurrent();
+					if (currentWindow.id && currentWindow.width) {
+						const newWindowWidth = currentWindow.width + delta;
+						await chrome.windows.update(currentWindow.id, {
+							width: newWindowWidth,
+						});
+					}
+				} catch (error) {
+					console.error('Failed to resize window:', error);
+				}
+			}
 		}
 	};
 
@@ -167,7 +208,7 @@ const App: React.FC = () => {
 			document.removeEventListener('mouseup', handleMouseUp);
 			document.body.style.cursor = '';
 		};
-	}, [isResizing]);
+	}, [isResizing, sidebarWidth, displayMode]);
 
 	return (
 		<div style={{ 
@@ -199,6 +240,8 @@ const App: React.FC = () => {
 					onOpenSettings={() => setShowSettings(true)}
 					onClearAll={handleClearAll}
 					overriddenUrls={overriddenUrls}
+					displayMode={displayMode}
+					onToggleDisplayMode={handleToggleDisplayMode}
 				/>
 			</div>
 			{/* Resizer */}

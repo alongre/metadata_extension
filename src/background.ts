@@ -835,6 +835,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			})();
 			return true;
 
+		case 'GET_DISPLAY_MODE':
+			(async () => {
+				try {
+					const mode = await getDisplayMode();
+					sendResponse({ success: true, data: mode });
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					sendResponse({ success: false, error: errorMsg });
+				}
+			})();
+			return true;
+
+		case 'TOGGLE_DISPLAY_MODE':
+			(async () => {
+				try {
+					await toggleDisplayMode();
+					const newMode = await getDisplayMode();
+					sendResponse({ success: true, data: newMode });
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					debugLog(`❌ Error toggling display mode: ${errorMsg}`);
+					sendResponse({ success: false, error: errorMsg });
+				}
+			})();
+			return true;
+
 		default:
 			debugLog(`❌ Unknown message type: ${message.type}`);
 			sendResponse({ error: 'Unknown message type' });
@@ -852,9 +878,105 @@ debugLog(`📋 Available chrome APIs:`, {
 // Track the popup window
 let popupWindowId: number | null = null;
 
-// Open the popup when the extension icon is clicked
+// Display mode storage key
+const DISPLAY_MODE_KEY = 'displayMode';
+
+// Get current display mode from storage
+async function getDisplayMode(): Promise<'docked' | 'undocked'> {
+	const result = await chrome.storage.local.get(DISPLAY_MODE_KEY);
+	return result[DISPLAY_MODE_KEY] || 'docked';
+}
+
+// Set display mode in storage
+async function setDisplayMode(mode: 'docked' | 'undocked'): Promise<void> {
+	await chrome.storage.local.set({ [DISPLAY_MODE_KEY]: mode });
+}
+
+// Configure display mode on startup
+async function configureDisplayMode() {
+	const mode = await getDisplayMode();
+	if (mode === 'undocked') {
+		// Remove default popup and register click listener
+		await chrome.action.setPopup({ popup: '' });
+	} else {
+		// Set default popup for docked mode
+		await chrome.action.setPopup({ popup: 'popup.html' });
+	}
+	debugLog(`🔧 Configured display mode: ${mode}`);
+}
+
+// Initialize display mode on startup
+configureDisplayMode();
+
+// Handle display mode toggle
+async function toggleDisplayMode() {
+	const currentMode = await getDisplayMode();
+	const newMode = currentMode === 'docked' ? 'undocked' : 'docked';
+
+	if (newMode === 'undocked') {
+		// Switch to undocked mode
+		await chrome.action.setPopup({ popup: '' });
+		await setDisplayMode('undocked');
+
+		// Close any existing popup window first
+		if (popupWindowId !== null) {
+			try {
+				await chrome.windows.remove(popupWindowId);
+				popupWindowId = null;
+			} catch (error) {
+				// Window might not exist
+				popupWindowId = null;
+			}
+		}
+
+		// Open standalone window
+		const window = await chrome.windows.create({
+			url: 'popup.html',
+			type: 'popup',
+			width: 800,
+			height: 600,
+			left: 100,
+			top: 100,
+			focused: true,
+		});
+
+		if (window.id) {
+			popupWindowId = window.id;
+			// Force the window size after creation
+			setTimeout(() => {
+				if (popupWindowId) {
+					chrome.windows.update(popupWindowId, {
+						width: 800,
+						height: 600,
+						left: 100,
+						top: 100,
+					});
+				}
+			}, 100);
+		}
+	} else {
+		// Switch to docked mode
+		await chrome.action.setPopup({ popup: 'popup.html' });
+		await setDisplayMode('docked');
+
+		// Close standalone window if it exists
+		if (popupWindowId !== null) {
+			try {
+				await chrome.windows.remove(popupWindowId);
+			} catch (error) {
+				// Window might not exist
+			}
+			popupWindowId = null;
+		}
+	}
+
+	debugLog(`🔄 Toggled display mode to: ${newMode}`);
+}
+
+// Open the popup when the extension icon is clicked (only fires when popup is not set)
 chrome.action.onClicked.addListener(async () => {
 	try {
+		// This listener only fires when in undocked mode
 		// Check if popup window already exists
 		if (popupWindowId !== null) {
 			try {
@@ -880,7 +1002,7 @@ chrome.action.onClicked.addListener(async () => {
 			top: 100,
 			focused: true,
 		});
-		
+
 		if (window.id) {
 			popupWindowId = window.id;
 			// Force the window size after creation

@@ -48,7 +48,9 @@ export type BackgroundMessage =
 	| { type: 'CLEAR_ALL_REQUESTS' }
 	| { type: 'PATTERNS_UPDATED' }
 	| { type: 'EDIT_URL_PATTERN'; patternId: string; pattern: string; enabled: boolean }
-	| { type: 'CHECK_OVERRIDE_STATUS'; url: string };
+	| { type: 'CHECK_OVERRIDE_STATUS'; url: string }
+	| { type: 'TOGGLE_DISPLAY_MODE' }
+	| { type: 'GET_DISPLAY_MODE' };
 
 export interface BackgroundResponse {
 	success?: boolean;
