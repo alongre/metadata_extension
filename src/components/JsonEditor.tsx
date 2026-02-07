@@ -900,20 +900,29 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 					return;
 				}
 
-				// Parse data if it's a string
+				// Parse data if it's a string, but keep the original string for display
 				let parsedData = dataToShow;
+				let originalText = '';
+
 				if (typeof dataToShow === 'string') {
 					try {
 						parsedData = JSON.parse(dataToShow);
+						// Preserve the original formatting from the response
+						originalText = dataToShow;
 					} catch (e) {
 						// If parsing fails, treat as plain string
 						parsedData = dataToShow;
+						originalText = dataToShow;
 					}
+				} else {
+					// If it's already an object, stringify it with formatting
+					originalText = JSON.stringify(dataToShow, null, 2);
 				}
 
 				setJsonData(parsedData);
 				setEditedData(parsedData);
-				setJsonText(JSON.stringify(parsedData, null, 2)); // Set text for CodeMirror
+				// Use the original text to preserve key order
+				setJsonText(originalText || JSON.stringify(parsedData, null, 2));
 
 				// Set default collapsed paths for level 2 and deeper
 				const defaultCollapsed = createDefaultCollapsedPaths(parsedData);
