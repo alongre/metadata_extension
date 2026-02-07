@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, RotateCcw, FileJson, CheckCircle, AlertTriangle, Zap, Edit3, Pencil, Trash2, Copy, Clipboard } from 'lucide-react';
+import { Save, RotateCcw, FileJson, CheckCircle, AlertTriangle, Zap, Edit3, Pencil, Trash2, Copy, Clipboard, Download, Upload } from 'lucide-react';
 import { CapturedRequest } from '../types';
 import { ClipboardCopyButton } from './ClipboardCopyButton';
 import { useClipboard } from '../hooks/useClipboard';
@@ -197,6 +197,7 @@ interface JsonEditorLineProps {
 	clipboardData?: any;
 	isEditing?: boolean;
 	recentlyCopiedPath?: string | null;
+	getOrderedEntries?: (obj: any, path: string[]) => [string, any][];
 }
 
 const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
@@ -215,6 +216,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 	clipboardData,
 	isEditing: isInEditMode = false,
 	recentlyCopiedPath,
+	getOrderedEntries: getOrderedEntriesProp,
 }) => {
 	const [isEditingValue, setIsEditingValue] = useState(false);
 	const [editValue, setEditValue] = useState('');
@@ -429,7 +431,9 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 
 	// For objects and arrays - simplified view
 	if (isObject || isArray) {
-		const entries = isArray ? value.map((v: any, i: number) => [i, v]) : Object.entries(value);
+		const entries = isArray
+			? value.map((v: any, i: number) => [i, v])
+			: (getOrderedEntriesProp ? getOrderedEntriesProp(value, path) : Object.entries(value));
 		const bracket = isArray ? ['[', ']'] : ['{', '}'];
 
 		if (collapsed) {
@@ -660,6 +664,7 @@ const JsonEditorLine: React.FC<JsonEditorLineProps> = ({
 							clipboardData={clipboardData}
 							isEditing={isInEditMode}
 							recentlyCopiedPath={recentlyCopiedPath}
+							getOrderedEntries={getOrderedEntriesProp}
 						/>
 					);
 				})}
@@ -691,10 +696,211 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 	const [parseError, setParseError] = useState<string | null>(null);
 	const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set());
 	const [jsonText, setJsonText] = useState<string>(''); // For CodeMirror editor
+	const [originalResponseText, setOriginalResponseText] = useState<string>(''); // Original raw response for key order reference
+	const [originalResponseData, setOriginalResponseData] = useState<any>(null); // Store the original response data (before file load)
 	const [recentlyCopiedPath, setRecentlyCopiedPath] = useState<string | null>(null); // Track which node was recently copied
 	const [clipboardData, setClipboardData] = useState<any>(undefined); // Cache clipboard data
 	const { copy: copyToClipboard } = useClipboard({ timeout: 2000 });
         const codeMirrorRef = useRef<{ foldAll: () => void; unfoldAll: () => void }>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+
+	// --- Recursive key order map ---
+	// Maps each object path in the original JSON to its ordered list of keys
+	type KeyOrderMap = { keys: string[]; children: Record<string, KeyOrderMap> };
+
+	const keyOrderMapRef = useRef<KeyOrderMap | null>(null);
+
+	// Build a recursive key order map by walking the raw JSON text character-by-character
+	const buildKeyOrderMap = (jsonText: string): KeyOrderMap | null => {
+		const text = jsonText.trim();
+		if (!text) return null;
+
+		// pos is mutable index shared across the recursive descent
+		let pos = 0;
+
+		const skipWhitespace = () => {
+			while (pos < text.length && /\s/.test(text[pos])) pos++;
+		};
+
+		const readString = (): string => {
+			// pos should be on the opening "
+			if (text[pos] !== '"') return '';
+			pos++; // skip opening "
+			let result = '';
+			while (pos < text.length) {
+				const ch = text[pos];
+				if (ch === '\\') {
+					result += ch;
+					pos++;
+					if (pos < text.length) {
+						result += text[pos];
+						pos++;
+					}
+					continue;
+				}
+				if (ch === '"') {
+					pos++; // skip closing "
+					return result;
+				}
+				result += ch;
+				pos++;
+			}
+			return result;
+		};
+
+		const skipValue = () => {
+			// Skip over any JSON value without building a map for it
+			skipWhitespace();
+			if (pos >= text.length) return;
+			const ch = text[pos];
+			if (ch === '"') { readString(); return; }
+			if (ch === '{') { parseObject(); return; }
+			if (ch === '[') { parseArray(); return; }
+			// number, boolean, null – read until delimiter
+			while (pos < text.length && !/[,\]\}\s]/.test(text[pos])) pos++;
+		};
+
+		const parseArray = (): void => {
+			pos++; // skip [
+			skipWhitespace();
+			if (pos < text.length && text[pos] === ']') { pos++; return; }
+			while (pos < text.length) {
+				skipValue();
+				skipWhitespace();
+				if (pos < text.length && text[pos] === ',') { pos++; skipWhitespace(); continue; }
+				if (pos < text.length && text[pos] === ']') { pos++; return; }
+				break;
+			}
+		};
+
+		const parseObject = (): KeyOrderMap => {
+			const map: KeyOrderMap = { keys: [], children: {} };
+			pos++; // skip {
+			skipWhitespace();
+			if (pos < text.length && text[pos] === '}') { pos++; return map; }
+
+			while (pos < text.length) {
+				skipWhitespace();
+				if (pos >= text.length || text[pos] !== '"') break;
+				const key = readString();
+				map.keys.push(key);
+				skipWhitespace();
+				if (pos < text.length && text[pos] === ':') pos++; // skip :
+				skipWhitespace();
+
+				// Peek to see if the value is an object so we recurse
+				if (pos < text.length && text[pos] === '{') {
+					map.children[key] = parseObject();
+				} else {
+					skipValue();
+				}
+
+				skipWhitespace();
+				if (pos < text.length && text[pos] === ',') { pos++; continue; }
+				if (pos < text.length && text[pos] === '}') { pos++; return map; }
+				break;
+			}
+			return map;
+		};
+
+		try {
+			skipWhitespace();
+			if (text[pos] === '{') return parseObject();
+			return null;
+		} catch {
+			return null;
+		}
+	};
+
+	// Rebuild key order map whenever originalResponseText changes
+	useEffect(() => {
+		keyOrderMapRef.current = buildKeyOrderMap(originalResponseText);
+	}, [originalResponseText]);
+
+	// Synchronously set the original response text AND rebuild the key order map
+	// so that stringifyWithOrder can use it immediately (not after a re-render)
+	const setOriginalResponseTextAndMap = (text: string) => {
+		setOriginalResponseText(text);
+		keyOrderMapRef.current = buildKeyOrderMap(text);
+	};
+
+	// Look up the KeyOrderMap node for a given path (array of string keys)
+	const getMapAtPath = (path: string[]): KeyOrderMap | null => {
+		let node = keyOrderMapRef.current;
+		if (!node) return null;
+		for (const segment of path) {
+			node = node.children[segment] ?? null;
+			if (!node) return null;
+		}
+		return node;
+	};
+
+	// Helper function to get object entries in the order they appear in the ORIGINAL response text
+	const getOrderedEntries = (obj: any, path: string[] = []): [string, any][] => {
+		if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+			return Object.entries(obj);
+		}
+
+		const mapNode = getMapAtPath(path);
+		if (!mapNode) {
+			return Object.entries(obj);
+		}
+
+		const keyOrder = mapNode.keys;
+		const result: [string, any][] = [];
+
+		// Keys in original order
+		for (const key of keyOrder) {
+			if (obj.hasOwnProperty(key)) {
+				result.push([key, obj[key]]);
+			}
+		}
+
+		// Any new keys not in the original
+		for (const key of Object.keys(obj)) {
+			if (!keyOrder.includes(key)) {
+				result.push([key, obj[key]]);
+			}
+		}
+
+		return result;
+	};
+
+	// Helper: escape a string for JSON output (handles special chars)
+	const jsonEscapeString = (s: string): string => {
+		return JSON.stringify(s); // returns "..." with proper escapes
+	};
+
+	// Helper function to stringify JSON with preserved key order at ALL nesting levels
+	const stringifyWithOrder = (obj: any, indent: number = 2, currentPath: string[] = [], currentIndent: number = 0): string => {
+		if (obj === null || obj === undefined) return JSON.stringify(obj);
+		if (typeof obj !== 'object') return JSON.stringify(obj);
+
+		const indentStr = ' '.repeat(currentIndent + indent);
+		const closingIndent = ' '.repeat(currentIndent);
+
+		if (Array.isArray(obj)) {
+			if (obj.length === 0) return '[]';
+			const items = obj.map((item, i) => {
+				const childPath = [...currentPath, String(i)];
+				return indentStr + stringifyWithOrder(item, indent, childPath, currentIndent + indent);
+			});
+			return '[\n' + items.join(',\n') + '\n' + closingIndent + ']';
+		}
+
+		// Object — use key order map
+		const entries = getOrderedEntries(obj, currentPath);
+		if (entries.length === 0) return '{}';
+
+		const lines = entries.map(([key, value], index) => {
+			const childPath = [...currentPath, key];
+			const valueStr = stringifyWithOrder(value, indent, childPath, currentIndent + indent);
+			const comma = index < entries.length - 1 ? ',' : '';
+			return `${indentStr}${jsonEscapeString(key)}: ${valueStr}${comma}`;
+		});
+
+		return '{\n' + lines.join('\n') + '\n' + closingIndent + '}';
+	};
 
 	// Check clipboard for any content
 	const checkClipboard = async () => {
@@ -892,6 +1098,12 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 				const hasResponse = selectedRequest.responseData !== undefined;
 				const dataToShow = selectedRequest.overrideData ?? (hasResponse ? selectedRequest.responseData : undefined);
 
+				console.log('[JsonEditor useEffect] hasResponse:', hasResponse,
+					'hasOverrideData:', selectedRequest.overrideData !== undefined,
+					'isOverridden:', selectedRequest.isOverridden,
+					'responseData type:', typeof selectedRequest.responseData,
+					'dataToShow type:', typeof dataToShow);
+
 				if (dataToShow === undefined) {
 					setJsonData(null);
 					setEditedData(null);
@@ -900,20 +1112,55 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 					return;
 				}
 
-				// Parse data if it's a string
+				// Parse data if it's a string, but keep the original string for display
 				let parsedData = dataToShow;
+				let originalText = '';
+
 				if (typeof dataToShow === 'string') {
 					try {
 						parsedData = JSON.parse(dataToShow);
+						originalText = dataToShow;
 					} catch (e) {
-						// If parsing fails, treat as plain string
 						parsedData = dataToShow;
+						originalText = dataToShow;
 					}
+				} else {
+					originalText = JSON.stringify(dataToShow, null, 2);
 				}
+
+				// Determine the reference text for key ordering FIRST, then build
+				// the key order map synchronously so stringifyWithOrder can use it
+				let referenceText = '';
+				if (selectedRequest.responseDataRaw) {
+					referenceText = selectedRequest.responseDataRaw;
+				} else if (!selectedRequest.overrideData && hasResponse && typeof selectedRequest.responseData === 'string') {
+					referenceText = selectedRequest.responseData;
+				} else if (!selectedRequest.overrideData && hasResponse) {
+					referenceText = JSON.stringify(selectedRequest.responseData, null, 2);
+				} else {
+					referenceText = originalText;
+				}
+				setOriginalResponseTextAndMap(referenceText);
+
+				// Now stringifyWithOrder can use the up-to-date key order map
+				const formattedText = typeof parsedData === 'string' ? parsedData : stringifyWithOrder(parsedData, 2);
 
 				setJsonData(parsedData);
 				setEditedData(parsedData);
-				setJsonText(JSON.stringify(parsedData, null, 2)); // Set text for CodeMirror
+				setJsonText(formattedText || JSON.stringify(parsedData, null, 2));
+
+				// Always store the original response data for "Clear Changes" / "Reset"
+				if (hasResponse) {
+					let originalData = selectedRequest.responseData;
+					if (typeof originalData === 'string') {
+						try {
+							originalData = JSON.parse(originalData);
+						} catch (e) {
+							// keep as string
+						}
+					}
+					setOriginalResponseData(originalData);
+				}
 
 				// Set default collapsed paths for level 2 and deeper
 				const defaultCollapsed = createDefaultCollapsedPaths(parsedData);
@@ -941,15 +1188,17 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 				// Don't switch modes if JSON is invalid
 				return;
 			}
-		} else {
-			// Switching to edit mode
-			setJsonText(JSON.stringify(editedData, null, 2));
 		}
+		// When switching to edit mode, jsonText is already up-to-date from handleJsonChange
+		// No need to re-stringify editedData which would lose key order
 		setIsEditing(!isEditing);
 	};
 
 	const handleJsonChange = (newValue: any) => {
 		setEditedData(newValue);
+		// Also update jsonText to preserve changes when switching to edit mode
+		// Use stringifyWithOrder to maintain the original key order
+		setJsonText(stringifyWithOrder(newValue, 2));
 		setHasChanges(JSON.stringify(newValue) !== JSON.stringify(jsonData));
 		setParseError(null);
 	};
@@ -983,7 +1232,26 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 
 	const handleClearOverride = async () => {
 		if (!selectedRequest) return;
+		console.log('[handleClearOverride] called, originalResponseData:', originalResponseData !== null ? 'exists' : 'null',
+			'selectedRequest.responseData:', selectedRequest.responseData !== undefined ? 'exists' : 'undefined');
 		await onClearOverride(selectedRequest.id);
+
+		// Reset to original response data
+		const revertTo = originalResponseData;
+		if (revertTo !== null) {
+			// Restore the original response text for key ordering
+			if (selectedRequest.responseDataRaw) {
+				setOriginalResponseTextAndMap(selectedRequest.responseDataRaw);
+			}
+
+			const formattedText = typeof revertTo === 'string' ? revertTo : stringifyWithOrder(revertTo, 2);
+			setJsonData(revertTo);
+			setEditedData(revertTo);
+			setJsonText(formattedText);
+			setHasChanges(false);
+			setParseError(null);
+			setIsEditing(false);
+		}
 	};
 
 	const formatJson = () => {
@@ -997,8 +1265,17 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 	};
 
 	const handleClearChanges = () => {
-		setEditedData(jsonData);
-		setJsonText(JSON.stringify(jsonData, null, 2));
+		// Revert to the original response data (before file load / edits)
+		const revertTo = originalResponseData !== null ? originalResponseData : jsonData;
+
+		// Restore the original response key ordering
+		if (selectedRequest?.responseDataRaw) {
+			setOriginalResponseTextAndMap(selectedRequest.responseDataRaw);
+		}
+
+		setJsonData(revertTo);
+		setEditedData(revertTo);
+		setJsonText(stringifyWithOrder(revertTo, 2));
 		setHasChanges(false);
 		setParseError(null);
 	};
@@ -1032,6 +1309,81 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 			// Fallback to just formatting
 			formatJson();
 		}
+	};
+
+	const handleSaveToFile = () => {
+		if (!editedData || !selectedRequest) return;
+
+		try {
+			// Create JSON blob
+			const jsonString = stringifyWithOrder(editedData, 2);
+			const blob = new Blob([jsonString], { type: 'application/json' });
+			const url = URL.createObjectURL(blob);
+
+			// Create temporary download link
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = `${selectedRequest.endpoint}.json`;
+			document.body.appendChild(link);
+			link.click();
+
+			// Cleanup
+			document.body.removeChild(link);
+			URL.revokeObjectURL(url);
+		} catch (error) {
+			console.error('Failed to save file:', error);
+			setParseError('Failed to save file');
+		}
+	};
+
+	const handleLoadFromFile = () => {
+		fileInputRef.current?.click();
+	};
+
+	const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		if (!file) return;
+
+		const reader = new FileReader();
+		reader.onload = (e) => {
+			try {
+				const content = e.target?.result as string;
+				const parsed = JSON.parse(content);
+
+				// Use the loaded file content as the reference for key ordering
+				setOriginalResponseTextAndMap(content);
+
+				// Update editor with loaded content (formatted to preserve key order)
+				const formattedText = stringifyWithOrder(parsed, 2);
+
+				// Check if loaded file is different from the original response data
+				const compareAgainst = originalResponseData !== null ? originalResponseData : jsonData;
+				const isDifferent = JSON.stringify(parsed) !== JSON.stringify(compareAgainst);
+
+				// Update jsonData and editedData with the loaded file
+				setJsonData(parsed);
+				setEditedData(parsed);
+				setJsonText(formattedText);
+				// Mark as changed if different from the original response data
+				setHasChanges(isDifferent);
+				setParseError(null);
+
+				// If not in edit mode, switch to it
+				if (!isEditing) {
+					setIsEditing(true);
+				}
+			} catch (error) {
+				console.error('Failed to parse JSON file:', error);
+				setParseError('Invalid JSON file');
+			}
+		};
+		reader.onerror = () => {
+			setParseError('Failed to read file');
+		};
+		reader.readAsText(file);
+
+		// Reset input value to allow loading the same file again
+		event.target.value = '';
 	};
 
 	if (!selectedRequest) {
@@ -1104,11 +1456,20 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 
 	return (
 		<div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+			{/* Hidden file input for loading JSON files */}
+			<input
+				ref={fileInputRef}
+				type="file"
+				accept=".json"
+				onChange={handleFileChange}
+				style={{ display: 'none' }}
+			/>
+
 			{/* Header */}
 			<div style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '16px' }}>
 				<div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between' }}>
 					<div style={{ width: '100%' }}>
-						<div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', justifyContent: 'space-between' }}>
+						<div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', justifyContent: 'space-between' }}>
 							<h2
 								style={{
 									fontSize: '20px',
@@ -1124,7 +1485,79 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 								{selectedRequest.endpoint}
 							</h2>
 
-							<ClipboardCopyButton textToCopy={JSON.stringify(editedData, null, 2)} />
+							<div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+								<button
+									onClick={handleLoadFromFile}
+									disabled={!jsonData}
+									title="Load JSON from file"
+									style={{
+										padding: '6px 12px',
+										backgroundColor: jsonData ? '#ffffff' : '#f3f4f6',
+										color: jsonData ? '#374151' : '#9ca3af',
+										border: '1px solid #d1d5db',
+										borderRadius: '6px',
+										cursor: jsonData ? 'pointer' : 'not-allowed',
+										display: 'flex',
+										alignItems: 'center',
+										gap: '6px',
+										fontSize: '14px',
+										fontWeight: '500',
+										transition: 'all 0.2s',
+									}}
+									onMouseEnter={(e) => {
+										if (jsonData) {
+											e.currentTarget.style.backgroundColor = '#f9fafb';
+											e.currentTarget.style.borderColor = '#9ca3af';
+										}
+									}}
+									onMouseLeave={(e) => {
+										if (jsonData) {
+											e.currentTarget.style.backgroundColor = '#ffffff';
+											e.currentTarget.style.borderColor = '#d1d5db';
+										}
+									}}
+								>
+									<Upload size={16} />
+									Load
+								</button>
+
+								<button
+									onClick={handleSaveToFile}
+									disabled={!editedData}
+									title="Save JSON to file"
+									style={{
+										padding: '6px 12px',
+										backgroundColor: editedData ? '#ffffff' : '#f3f4f6',
+										color: editedData ? '#374151' : '#9ca3af',
+										border: '1px solid #d1d5db',
+										borderRadius: '6px',
+										cursor: editedData ? 'pointer' : 'not-allowed',
+										display: 'flex',
+										alignItems: 'center',
+										gap: '6px',
+										fontSize: '14px',
+										fontWeight: '500',
+										transition: 'all 0.2s',
+									}}
+									onMouseEnter={(e) => {
+										if (editedData) {
+											e.currentTarget.style.backgroundColor = '#f9fafb';
+											e.currentTarget.style.borderColor = '#9ca3af';
+										}
+									}}
+									onMouseLeave={(e) => {
+										if (editedData) {
+											e.currentTarget.style.backgroundColor = '#ffffff';
+											e.currentTarget.style.borderColor = '#d1d5db';
+										}
+									}}
+								>
+									<Download size={16} />
+									Save
+								</button>
+
+								<ClipboardCopyButton textToCopy={stringifyWithOrder(editedData, 2)} />
+							</div>
 						</div>
 
 						<div
@@ -1290,7 +1723,7 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 									>
 										{/* Custom inline editable JSON tree */}
 										<div style={{ marginBottom: '4px', fontWeight: 'bold', color: '#374151' }}>{'{'}</div>
-										{Object.entries(editedData).map(([key, value], index, array) => (
+										{getOrderedEntries(editedData).map(([key, value], index, array) => (
 											<JsonEditorLine
 												key={key}
 												value={value}
@@ -1308,6 +1741,7 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 												clipboardData={clipboardData}
 												isEditing={isEditing}
 												recentlyCopiedPath={recentlyCopiedPath}
+												getOrderedEntries={getOrderedEntries}
 											/>
 										))}
 										<div style={{ fontWeight: 'bold', color: '#374151' }}>{'}'}</div>

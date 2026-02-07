@@ -17,14 +17,15 @@
 			.text()
 			.then((body) => {
 				if (clonedResponse.url) {
-					// Dispatch a custom event with the captured data
+					// Store raw text to preserve key order from server
 					window.dispatchEvent(
 						new CustomEvent('RESPONSE_CAPTURED', {
 							detail: {
 								type: 'FETCH',
 								requestId: clonedResponse.url,
 								url: clonedResponse.url,
-								data: body,
+								data: body, // Store as raw string
+								isRawText: true, // Flag to indicate raw text
 								timestamp: Date.now(),
 							},
 						})
@@ -60,15 +61,36 @@
 			}
 
 			if (fullUrl) {
-				// Dispatch a custom event with the captured data
+				// Store as raw text to preserve key order
+				let responseData = this.response;
+				let isRawText = false;
+
+				// If response is already a string, use it directly
+				if (typeof responseData === 'string') {
+					isRawText = true;
+				} else if (this.responseType === '' || this.responseType === 'text') {
+					// Default responseType treats as text
+					responseData = this.responseText;
+					isRawText = true;
+				} else if (this.responseType === 'json') {
+					// If it's JSON type, get the raw text instead
+					try {
+						responseData = this.responseText;
+						isRawText = true;
+					} catch (e) {
+						// Fallback to parsed response
+						responseData = this.response;
+					}
+				}
+
 				window.dispatchEvent(
 					new CustomEvent('RESPONSE_CAPTURED', {
 						detail: {
-							type: 'FETCH',
+							type: 'XHR',
 							requestId: fullUrl,
 							url: fullUrl,
-							isOverridden: true,
-							data: this.response,
+							data: responseData,
+							isRawText: isRawText,
 							timestamp: Date.now(),
 						},
 					})
