@@ -53,7 +53,9 @@ export type BackgroundMessage =
 	| { type: 'EDIT_URL_PATTERN'; patternId: string; pattern: string; enabled: boolean }
 	| { type: 'CHECK_OVERRIDE_STATUS'; url: string }
 	| { type: 'TOGGLE_DISPLAY_MODE' }
-	| { type: 'GET_DISPLAY_MODE' };
+	| { type: 'GET_DISPLAY_MODE' }
+	| { type: 'GET_PINNED_REQUESTS' }
+	| { type: 'SET_PINNED_REQUESTS'; pinnedRequestIds: string[] };
 
 export interface BackgroundResponse {
 	success?: boolean;

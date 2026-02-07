@@ -13,11 +13,13 @@ const App: React.FC = () => {
 	const [showSettings, setShowSettings] = useState(false);
 	const [overriddenUrls, setOverriddenUrls] = useState<string[]>([]);
 	const [displayMode, setDisplayMode] = useState<'docked' | 'undocked'>('docked');
+	const [pinnedRequestIds, setPinnedRequestIds] = useState<string[]>([]);
 
 	useEffect(() => {
 		loadRequests();
 		loadOverrides();
 		loadDisplayMode();
+		loadPinnedRequests();
 
 		// Listen for real-time request updates from background script
 		const messageListener = (message: any) => {
@@ -69,6 +71,26 @@ const App: React.FC = () => {
 		}
 	};
 
+	const loadPinnedRequests = async () => {
+		try {
+			const response = await chrome.runtime.sendMessage({ type: 'GET_PINNED_REQUESTS' });
+			if (response.success) {
+				setPinnedRequestIds(response.data);
+			}
+		} catch (error) {
+			console.error('Failed to load pinned requests:', error);
+		}
+	};
+
+	const handleSetPinnedRequestIds = async (ids: string[]) => {
+		setPinnedRequestIds(ids);
+		try {
+			await chrome.runtime.sendMessage({ type: 'SET_PINNED_REQUESTS', pinnedRequestIds: ids });
+		} catch (error) {
+			console.error('Failed to save pinned requests:', error);
+		}
+	};
+
 	const loadRequests = async () => {
 		try {
 			const response = await chrome.runtime.sendMessage({ type: 'GET_REQUESTS' });
@@ -113,6 +135,7 @@ const App: React.FC = () => {
 				requestId,
 			});
 			setRequests((prev) => prev.filter((req) => req.id !== requestId));
+			setPinnedRequestIds((prev) => prev.filter((id) => id !== requestId));
 			if (selectedRequest?.id === requestId) {
 				setSelectedRequest(null);
 			}
@@ -175,6 +198,7 @@ const App: React.FC = () => {
 			await chrome.runtime.sendMessage({ type: 'CLEAR_ALL_REQUESTS' });
 			setRequests([]);
 			setSelectedRequest(null);
+			setPinnedRequestIds([]);
 		} catch (error) {
 			console.error('Failed to clear all requests:', error);
 		}
@@ -264,6 +288,8 @@ const App: React.FC = () => {
 					overriddenUrls={overriddenUrls}
 					displayMode={displayMode}
 					onToggleDisplayMode={handleToggleDisplayMode}
+					pinnedRequestIds={pinnedRequestIds}
+					onSetPinnedRequestIds={handleSetPinnedRequestIds}
 				/>
 			</div>
 			{/* Resizer */}

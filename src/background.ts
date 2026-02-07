@@ -516,6 +516,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 					const stored = await getStoredRequests();
 					delete stored[message.requestId];
 					await chrome.storage.local.set({ capturedRequests: stored });
+					// Also remove from pinned list
+					const pinResult = await chrome.storage.local.get('pinnedRequestIds');
+					const pinned: string[] = pinResult.pinnedRequestIds || [];
+					const filteredPinned = pinned.filter((id: string) => id !== message.requestId);
+					if (filteredPinned.length !== pinned.length) {
+						await chrome.storage.local.set({ pinnedRequestIds: filteredPinned });
+					}
 					debugLog(`🗑️ Deleted request: ${message.requestId}`);
 					sendResponse({ success: true });
 				} catch (error) {
@@ -837,7 +844,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		case 'CLEAR_ALL_REQUESTS':
 			(async () => {
 				try {
-					await chrome.storage.local.set({ capturedRequests: {} });
+					await chrome.storage.local.set({ capturedRequests: {}, pinnedRequestIds: [] });
 					debugLog(`🧹 Cleared all requests`);
 					sendResponse({ success: true });
 				} catch (error) {
@@ -898,6 +905,30 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 				} catch (error) {
 					const errorMsg = error instanceof Error ? error.message : String(error);
 					debugLog(`❌ Error toggling display mode: ${errorMsg}`);
+					sendResponse({ success: false, error: errorMsg });
+				}
+			})();
+			return true;
+
+		case 'GET_PINNED_REQUESTS':
+			(async () => {
+				try {
+					const result = await chrome.storage.local.get('pinnedRequestIds');
+					sendResponse({ success: true, data: result.pinnedRequestIds || [] });
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					sendResponse({ success: false, error: errorMsg });
+				}
+			})();
+			return true;
+
+		case 'SET_PINNED_REQUESTS':
+			(async () => {
+				try {
+					await chrome.storage.local.set({ pinnedRequestIds: message.pinnedRequestIds });
+					sendResponse({ success: true });
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
 					sendResponse({ success: false, error: errorMsg });
 				}
 			})();
