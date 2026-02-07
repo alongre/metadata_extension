@@ -47,6 +47,8 @@ interface CapturedRequest {
 	responseStatus?: number;
 	responseData?: any;
 	responseDataRaw?: string; // Raw response text to preserve key order
+	originalResponseData?: any; // Snapshot of responseData before first override
+	originalResponseDataRaw?: string; // Snapshot of responseDataRaw before first override
 	overrideData?: any;
 	isOverridden: boolean;
 	completed?: boolean;
@@ -540,6 +542,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 					const stored = await getStoredRequests();
 					const requestToUpdate = stored[message.requestId];
 					if (stored[message.requestId]) {
+						// Snapshot the original response data before the first override
+						// so we can restore it when the override is cleared
+						if (!stored[message.requestId].isOverridden) {
+							stored[message.requestId].originalResponseData = stored[message.requestId].responseData;
+							stored[message.requestId].originalResponseDataRaw = stored[message.requestId].responseDataRaw;
+						}
 						stored[message.requestId].overrideData = message.data;
 						stored[message.requestId].isOverridden = true;
 						stored[message.requestId].overrideUpdatedAt = Date.now();
@@ -572,26 +580,41 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		case 'CLEAR_OVERRIDE':
 			(async () => {
 				try {
-					const stored = await getStoredRequests();
-					const requestToUpdate = stored[message.requestId];
-					if (stored[message.requestId]) {
-						delete stored[message.requestId].overrideData;
-						stored[message.requestId].isOverridden = false;
-						stored[message.requestId].overrideUpdatedAt = Date.now();
-						await saveRequest(message.requestId, stored[message.requestId]);
+					await acquireLock();
+					let stored: StoredRequests;
+					let requestToUpdate: CapturedRequest | undefined;
+					try {
+						stored = await getStoredRequests();
+						requestToUpdate = stored[message.requestId];
+						if (stored[message.requestId]) {
+							delete stored[message.requestId].overrideData;
+							stored[message.requestId].isOverridden = false;
+							stored[message.requestId].overrideUpdatedAt = Date.now();
+							// Restore the original response data if we have a snapshot
+							if (stored[message.requestId].originalResponseData !== undefined) {
+								stored[message.requestId].responseData = stored[message.requestId].originalResponseData;
+								stored[message.requestId].responseDataRaw = stored[message.requestId].originalResponseDataRaw;
+								delete stored[message.requestId].originalResponseData;
+								delete stored[message.requestId].originalResponseDataRaw;
+							}
+							// Write directly to storage (not via saveRequest which merges
+							// and won't remove deleted properties like overrideData)
+							await chrome.storage.local.set({ capturedRequests: stored });
+						}
+					} finally {
+						releaseLock();
+					}
+					if (requestToUpdate) {
 						// Remove any DNR override rule for this URL
 						try {
-							// 2. Remove the ID from the active overrides index
 							const active = await getActiveOverrides();
 							delete active[message.requestId];
 							await chrome.storage.local.set({ [ACTIVE_OVERRIDES_KEY]: active });
-
-							// 3. Remove the DNR rule
 							await removeDnrRuleByUrl(requestToUpdate.url);
 						} catch (e) {
 							debugLog(`❌ Failed to remove DNR override: ${e}`);
 						}
-						debugLog(`🧹 Cleared override for: ${stored[message.requestId].endpoint}`);
+						debugLog(`🧹 Cleared override for: ${stored![message.requestId]?.endpoint}`);
 						sendResponse({ success: true });
 					} else {
 						debugLog(`❌ Request not found: ${message.requestId}`);
@@ -670,14 +693,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 					}
 
 					if (stored[requestId]) {
-						stored[requestId].responseData = responseData;
-						stored[requestId].responseDataRaw = responseDataRaw;
-						await saveRequest(requestId, {
-							responseData: responseData,
-							responseDataRaw: responseDataRaw,
-						});
-						console.log('RESPONSE_CAPTURED stored', stored[requestId]);
-						debugLog(`📡 Captured response body for: ${requestId} (raw preserved: ${responseDataRaw.length} chars)`);
+						// If the request has an active override, don't overwrite the
+						// original responseData — the interceptor may have captured the
+						// redirected override payload instead of the real server response.
+						if (stored[requestId].isOverridden) {
+							debugLog(`⏭️ Skipping response update for overridden request: ${requestId}`);
+						} else {
+							stored[requestId].responseData = responseData;
+							stored[requestId].responseDataRaw = responseDataRaw;
+							await saveRequest(requestId, {
+								responseData: responseData,
+								responseDataRaw: responseDataRaw,
+							});
+							debugLog(`📡 Captured response body for: ${requestId} (raw preserved: ${responseDataRaw.length} chars)`);
+						}
 					} else {
 						debugLog(`❌ No matching request found in storage for response: ${url}`);
 					}

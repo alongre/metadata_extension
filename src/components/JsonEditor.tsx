@@ -1098,11 +1098,7 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 				const hasResponse = selectedRequest.responseData !== undefined;
 				const dataToShow = selectedRequest.overrideData ?? (hasResponse ? selectedRequest.responseData : undefined);
 
-				console.log('[JsonEditor useEffect] hasResponse:', hasResponse,
-					'hasOverrideData:', selectedRequest.overrideData !== undefined,
-					'isOverridden:', selectedRequest.isOverridden,
-					'responseData type:', typeof selectedRequest.responseData,
-					'dataToShow type:', typeof dataToShow);
+
 
 				if (dataToShow === undefined) {
 					setJsonData(null);
@@ -1232,8 +1228,6 @@ window.removeEventListener("mouseenter", handleWindowFocus);			document.removeEv
 
 	const handleClearOverride = async () => {
 		if (!selectedRequest) return;
-		console.log('[handleClearOverride] called, originalResponseData:', originalResponseData !== null ? 'exists' : 'null',
-			'selectedRequest.responseData:', selectedRequest.responseData !== undefined ? 'exists' : 'undefined');
 		await onClearOverride(selectedRequest.id);
 
 		// Reset to original response data

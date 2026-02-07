@@ -80,9 +80,21 @@ const App: React.FC = () => {
 					return bMod - aMod;
 				});
 			setRequests(requestsArray);
-			// If the current selection has no response or was removed, clear it
-			if (selectedRequest && !requestsArray.find((r) => r.id === selectedRequest.id)) {
-				setSelectedRequest(null);
+			if (selectedRequest) {
+				const updated = requestsArray.find((r) => r.id === selectedRequest.id);
+				if (updated) {
+					// Only update selectedRequest if the response data actually changed
+					// to avoid resetting the editor during edits
+					const responseChanged =
+						JSON.stringify(updated.responseData) !== JSON.stringify(selectedRequest.responseData) ||
+						updated.isOverridden !== selectedRequest.isOverridden ||
+						JSON.stringify(updated.overrideData) !== JSON.stringify(selectedRequest.overrideData);
+					if (responseChanged) {
+						setSelectedRequest(updated);
+					}
+				} else {
+					setSelectedRequest(null);
+				}
 			}
 		} catch (error) {
 			console.error('Failed to load requests:', error);
@@ -134,12 +146,22 @@ const App: React.FC = () => {
 				type: 'CLEAR_OVERRIDE',
 				requestId,
 			});
-			// Update local state
+			// Update local state — restore original response data if snapshot exists
+			const restoreOriginal = (req: CapturedRequest): CapturedRequest => {
+				const updated: CapturedRequest = { ...req, overrideData: undefined, isOverridden: false };
+				if (req.originalResponseData !== undefined) {
+					updated.responseData = req.originalResponseData;
+					updated.responseDataRaw = req.originalResponseDataRaw;
+					delete updated.originalResponseData;
+					delete updated.originalResponseDataRaw;
+				}
+				return updated;
+			};
 			setRequests((prev) =>
-				prev.map((req) => (req.id === requestId ? { ...req, overrideData: undefined, isOverridden: false } : req))
+				prev.map((req) => (req.id === requestId ? restoreOriginal(req) : req))
 			);
 			setSelectedRequest((prev) =>
-				prev?.id === requestId ? { ...prev, overrideData: undefined, isOverridden: false } : prev
+				prev?.id === requestId ? restoreOriginal(prev) : prev
 			);
 			loadOverrides();
 		} catch (error) {

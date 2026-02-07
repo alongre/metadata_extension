@@ -14,6 +14,8 @@ export interface CapturedRequest {
 	responseStatus?: number;
 	responseData?: any;
 	responseDataRaw?: string; // Raw response text to preserve key order
+	originalResponseData?: any; // Snapshot of responseData before first override
+	originalResponseDataRaw?: string; // Snapshot of responseDataRaw before first override
 	overrideData?: any;
 	isOverridden: boolean;
 	completed?: boolean;
